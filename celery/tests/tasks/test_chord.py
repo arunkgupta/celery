@@ -1,4 +1,4 @@
-from __future__ import absolute_import
+from __future__ import absolute_import, unicode_literals
 
 from contextlib import contextmanager
 
@@ -10,7 +10,9 @@ from celery.five import range
 from celery.result import AsyncResult, GroupResult, EagerResult
 from celery.tests.case import AppCase, Mock
 
-passthru = lambda x: x
+
+def passthru(x):
+    return x
 
 
 class ChordCase(AppCase):
@@ -72,10 +74,19 @@ class test_unlock_chord_task(ChordCase):
 
         with self._chord_context(AlwaysReady) as (cb, retry, _):
             cb.type.apply_async.assert_called_with(
-                ([2, 4, 8, 6], ), {}, task_id=cb.id,
+                ([2, 4, 8, 6],), {}, task_id=cb.id,
             )
             # did not retry
             self.assertFalse(retry.call_count)
+
+    def test_deps_ready_fails(self):
+        GroupResult = Mock(name='GroupResult')
+        GroupResult.return_value.ready.side_effect = KeyError('foo')
+        unlock_chord = self.app.tasks['celery.chord_unlock']
+
+        with self.assertRaises(KeyError):
+            unlock_chord('groupid', Mock(), result=[Mock()],
+                         GroupResult=GroupResult, result_from_tuple=Mock())
 
     def test_callback_fails(self):
 
@@ -87,7 +98,7 @@ class test_unlock_chord_task(ChordCase):
             callback.apply_async.side_effect = IOError()
 
         with self._chord_context(AlwaysReady, setup) as (cb, retry, fail):
-            self.assertTrue(fail.called)
+            fail.assert_called()
             self.assertEqual(
                 fail.call_args[0][0], cb.id,
             )
@@ -102,10 +113,10 @@ class test_unlock_chord_task(ChordCase):
             value = [2, KeyError('foo'), 8, 6]
 
         with self._chord_context(Failed) as (cb, retry, fail_current):
-            self.assertFalse(cb.type.apply_async.called)
+            cb.type.apply_async.assert_not_called()
             # did not retry
             self.assertFalse(retry.call_count)
-            self.assertTrue(fail_current.called)
+            fail_current.assert_called()
             self.assertEqual(
                 fail_current.call_args[0][0], cb.id,
             )
@@ -120,7 +131,7 @@ class test_unlock_chord_task(ChordCase):
             value = [2, KeyError('foo'), 8, 6]
 
         with self._chord_context(Failed) as (cb, retry, fail_current):
-            self.assertTrue(fail_current.called)
+            fail_current.assert_called()
             self.assertEqual(
                 fail_current.call_args[0][0], cb.id,
             )
@@ -171,7 +182,7 @@ class test_unlock_chord_task(ChordCase):
 
         with self._chord_context(NeverReady, interval=10, max_retries=30) \
                 as (cb, retry, _):
-            self.assertFalse(cb.type.apply_async.called)
+            cb.type.apply_async.assert_not_called()
             # did retry
             retry.assert_called_with(countdown=10, max_retries=30)
 
@@ -192,18 +203,18 @@ class test_chord(ChordCase):
         def sumX(n):
             return sum(n)
 
-        self.app.conf.CELERY_ALWAYS_EAGER = True
+        self.app.conf.task_always_eager = True
         x = chord(addX.s(i, i) for i in range(10))
         body = sumX.s()
         result = x(body)
         self.assertEqual(result.get(), sum(i + i for i in range(10)))
 
     def test_apply(self):
-        self.app.conf.CELERY_ALWAYS_EAGER = False
+        self.app.conf.task_always_eager = False
         from celery import chord
 
         m = Mock()
-        m.app.conf.CELERY_ALWAYS_EAGER = False
+        m.app.conf.task_always_eager = False
         m.AsyncResult = AsyncResult
         prev, chord.run = chord.run, m
         try:
@@ -214,7 +225,7 @@ class test_chord(ChordCase):
             # does not modify original signature
             with self.assertRaises(KeyError):
                 body.options['task_id']
-            self.assertTrue(chord.run.called)
+            chord.run.assert_called()
         finally:
             chord.run = prev
 
@@ -251,7 +262,7 @@ class test_add_to_chord(AppCase):
         self.assertTrue(sig.options['task_id'])
         self.assertEqual(sig.options['group_id'], self.adds.request.group)
         self.assertEqual(sig.options['chord'], self.adds.request.chord)
-        self.assertFalse(sig.delay.called)
+        sig.delay.assert_not_called()
         self.app.backend.add_to_chord.assert_called_with(
             self.adds.request.group, sig.freeze(),
         )

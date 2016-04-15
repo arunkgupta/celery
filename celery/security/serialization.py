@@ -6,17 +6,22 @@
     Secure serializer.
 
 """
-from __future__ import absolute_import
+from __future__ import absolute_import, unicode_literals
+
+import sys
 
 from kombu.serialization import registry, dumps, loads
 from kombu.utils.encoding import bytes_to_str, str_to_bytes, ensure_bytes
 
+from celery.utils.serialization import b64encode, b64decode
+
 from .certificate import Certificate, FSCertStore
 from .key import PrivateKey
 from .utils import reraise_errors
-from celery.utils.serialization import b64encode, b64decode
 
 __all__ = ['SecureSerializer', 'register_auth']
+
+PY3 = sys.version_info[0] == 3
 
 
 class SecureSerializer(object):
@@ -26,14 +31,14 @@ class SecureSerializer(object):
         self._key = key
         self._cert = cert
         self._cert_store = cert_store
-        self._digest = digest
+        self._digest = str_to_bytes(digest) if not PY3 else digest
         self._serializer = serializer
 
     def serialize(self, data):
         """serialize data structure into string"""
         assert self._key is not None
         assert self._cert is not None
-        with reraise_errors('Unable to serialize: {0!r}', (Exception, )):
+        with reraise_errors('Unable to serialize: {0!r}', (Exception,)):
             content_type, content_encoding, body = dumps(
                 bytes_to_str(data), serializer=self._serializer)
             # What we sign is the serialized body, not the body itself.
@@ -48,7 +53,7 @@ class SecureSerializer(object):
     def deserialize(self, data):
         """deserialize data structure from string"""
         assert self._cert_store is not None
-        with reraise_errors('Unable to deserialize: {0!r}', (Exception, )):
+        with reraise_errors('Unable to deserialize: {0!r}', (Exception,)):
             payload = self._unpack(data)
             signature, signer, body = (payload['signature'],
                                        payload['signer'],

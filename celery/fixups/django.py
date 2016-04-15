@@ -1,6 +1,5 @@
-from __future__ import absolute_import
+from __future__ import absolute_import, unicode_literals
 
-import io
 import os
 import sys
 import warnings
@@ -11,13 +10,20 @@ from datetime import datetime
 from importlib import import_module
 
 from celery import signals
+from celery.app import default_app
 from celery.exceptions import FixupWarning
+
+if sys.version_info[0] < 3 and not hasattr(sys, 'pypy_version_info'):
+    from StringIO import StringIO
+else:  # pragma: no cover
+    from io import StringIO
+
 
 __all__ = ['DjangoFixup', 'fixup']
 
 ERR_NOT_INSTALLED = """\
 Environment variable DJANGO_SETTINGS_MODULE is defined
-but Django is not installed.  Will not apply Django fixups!
+but Django is not installed.  Will not apply Django fix-ups!
 """
 
 
@@ -44,13 +50,15 @@ class DjangoFixup(object):
 
     def __init__(self, app):
         self.app = app
-        self.app.set_default()
+        if default_app is None:
+            self.app.set_default()
         self._worker_fixup = None
 
     def install(self):
         # Need to add project directory to path
         sys.path.append(os.getcwd())
 
+        self._settings = symbol_by_name('django.conf:settings')
         self.app.loader.now = self.now
         self.app.loader.mail_admins = self.mail_admins
 
@@ -58,11 +66,15 @@ class DjangoFixup(object):
         signals.worker_init.connect(self.on_worker_init)
         return self
 
-    @cached_property
+    @property
     def worker_fixup(self):
         if self._worker_fixup is None:
             self._worker_fixup = DjangoWorkerFixup(self.app)
         return self._worker_fixup
+
+    @worker_fixup.setter
+    def worker_fixup(self, value):
+        self._worker_fixup = value
 
     def on_import_modules(self, **kwargs):
         # call django.setup() before task modules are imported
@@ -76,6 +88,14 @@ class DjangoFixup(object):
 
     def mail_admins(self, subject, body, fail_silently=False, **kwargs):
         return self._mail_admins(subject, body, fail_silently=fail_silently)
+
+    def autodiscover_tasks(self):
+        try:
+            from django.apps import apps
+        except ImportError:
+            return self._settings.INSTALLED_APPS
+        else:
+            return [config.name for config in apps.get_app_configs()]
 
     @cached_property
     def _mail_admins(self):
@@ -98,6 +118,13 @@ class DjangoWorkerFixup(object):
         self._db = import_module('django.db')
         self._cache = import_module('django.core.cache')
         self._settings = symbol_by_name('django.conf:settings')
+
+        try:
+            self.interface_errors = (
+                symbol_by_name('django.db.utils.InterfaceError'),
+            )
+        except (ImportError, AttributeError):
+            self._interface_errors = ()
 
         # Database-related exceptions.
         DatabaseError = symbol_by_name('django.db:DatabaseError')
@@ -137,35 +164,46 @@ class DjangoWorkerFixup(object):
         except (ImportError, AttributeError):
             self._close_old_connections = None
         self.database_errors = (
-            (DatabaseError, ) +
+            (DatabaseError,) +
             _my_database_errors +
             _pg_database_errors +
             _lite_database_errors +
             _oracle_database_errors
         )
 
-    def validate_models(self):
+    def django_setup(self):
         import django
         try:
             django_setup = django.setup
-        except AttributeError:
+        except AttributeError:  # pragma: no cover
             pass
         else:
             django_setup()
-        s = io.StringIO()
+
+    def validate_models(self):
+        self.django_setup()
         try:
             from django.core.management.validation import get_validation_errors
         except ImportError:
-            from django.core.management.base import BaseCommand
-            cmd = BaseCommand()
-            cmd.stdout, cmd.stderr = sys.stdout, sys.stderr
-            cmd.check()
+            self._validate_models_django17()
         else:
+            s = StringIO()
             num_errors = get_validation_errors(s, None)
             if num_errors:
                 raise RuntimeError(
                     'One or more Django models did not validate:\n{0}'.format(
                         s.getvalue()))
+
+    def _validate_models_django17(self):
+        from django.core.management import base
+        print(base)
+        cmd = base.BaseCommand()
+        try:
+            cmd.stdout = base.OutputWrapper(sys.stdout)
+            cmd.stderr = base.OutputWrapper(sys.stderr)
+        except ImportError:  # before django 1.5
+            cmd.stdout, cmd.stderr = sys.stdout, sys.stderr
+        cmd.check()
 
     def install(self):
         signals.beat_embedded_init.connect(self.close_database)
@@ -194,14 +232,20 @@ class DjangoWorkerFixup(object):
         try:
             for c in self._db.connections.all():
                 if c and c.connection:
-                    _maybe_close_fd(c.connection)
+                    self._maybe_close_db_fd(c.connection)
         except AttributeError:
             if self._db.connection and self._db.connection.connection:
-                _maybe_close_fd(self._db.connection.connection)
+                self._maybe_close_db_fd(self._db.connection.connection)
 
         # use the _ version to avoid DB_REUSE preventing the conn.close() call
         self._close_database()
         self.close_cache()
+
+    def _maybe_close_db_fd(self, fd):
+        try:
+            _maybe_close_fd(fd)
+        except self.interface_errors:
+            pass
 
     def on_task_prerun(self, sender, **kwargs):
         """Called before every task."""
@@ -227,7 +271,7 @@ class DjangoWorkerFixup(object):
 
     def _close_database(self):
         try:
-            funs = [conn.close for conn in self._db.connections]
+            funs = [conn.close for conn in self._db.connections.all()]
         except AttributeError:
             if hasattr(self._db, 'close_old_connections'):  # django 1.6
                 funs = [self._db.close_old_connections]
@@ -238,6 +282,8 @@ class DjangoWorkerFixup(object):
         for close in funs:
             try:
                 close()
+            except self.interface_errors:
+                pass
             except self.database_errors as exc:
                 str_exc = str(exc)
                 if 'closed' not in str_exc and 'not connected' not in str_exc:

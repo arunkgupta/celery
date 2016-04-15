@@ -1,9 +1,10 @@
-from __future__ import absolute_import
+from __future__ import absolute_import, unicode_literals
 
 import os
 import base64
 
 from kombu.serialization import registry
+from kombu.utils.encoding import bytes_to_str
 
 from celery.exceptions import SecurityError
 from celery.security.serialization import SecureSerializer, register_auth
@@ -28,20 +29,21 @@ class test_SecureSerializer(SecurityCase):
 
     def test_deserialize(self):
         s = self._get_s(KEY1, CERT1, [CERT1])
-        self.assertRaises(SecurityError, s.deserialize, 'bad data')
+        with self.assertRaises(SecurityError):
+            s.deserialize('bad data')
 
     def test_unmatched_key_cert(self):
         s = self._get_s(KEY1, CERT2, [CERT1, CERT2])
-        self.assertRaises(SecurityError,
-                          s.deserialize, s.serialize('foo'))
+        with self.assertRaises(SecurityError):
+            s.deserialize(s.serialize('foo'))
 
     def test_unknown_source(self):
         s1 = self._get_s(KEY1, CERT1, [CERT2])
         s2 = self._get_s(KEY1, CERT1, [])
-        self.assertRaises(SecurityError,
-                          s1.deserialize, s1.serialize('foo'))
-        self.assertRaises(SecurityError,
-                          s2.deserialize, s2.serialize('foo'))
+        with self.assertRaises(SecurityError):
+            s1.deserialize(s1.serialize('foo'))
+        with self.assertRaises(SecurityError):
+            s2.deserialize(s2.serialize('foo'))
 
     def test_self_send(self):
         s1 = self._get_s(KEY1, CERT1, [CERT1])
@@ -59,6 +61,6 @@ class test_SecureSerializer(SecurityCase):
 
     def test_lots_of_sign(self):
         for i in range(1000):
-            rdata = base64.urlsafe_b64encode(os.urandom(265))
+            rdata = bytes_to_str(base64.urlsafe_b64encode(os.urandom(265)))
             s = self._get_s(KEY1, CERT1, [CERT1])
             self.assertEqual(s.deserialize(s.serialize(rdata)), rdata)

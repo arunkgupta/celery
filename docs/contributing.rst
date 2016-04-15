@@ -187,7 +187,7 @@ the developers fix the bug.
 
 A bug could be fixed by some other improvements and fixes - it might not have an
 existing report in the bug tracker. Make sure you're using the latest releases of
-celery, billiard and kombu.
+celery, billiard, kombu, amqp and vine.
 
 5) **Collect information about the bug.**
 
@@ -209,12 +209,12 @@ spelling or other errors on the website/docs/code.
        * Enable celery's :ref:`breakpoint signal <breakpoint_signal>` and use it
          to inspect the process's state.  This will allow you to open a
          :mod:`pdb` session.
-       * Collect tracing data using strace_(Linux), dtruss (OSX) and ktrace(BSD),
-         ltrace_ and lsof_.
+       * Collect tracing data using `strace`_(Linux), :command:`dtruss` (OSX),
+         and :command:`ktrace` (BSD), `ltrace`_ and `lsof`_.
 
-    D) Include the output from the `celery report` command:
+    D) Include the output from the :command:`celery report` command:
 
-        .. code-block:: bash
+        .. code-block:: console
 
             $ celery -A proj report
 
@@ -231,10 +231,10 @@ been made on your bug. In the event you've turned this feature off, you
 should check back on occasion to ensure you don't miss any questions a
 developer trying to fix the bug might ask.
 
-.. _`GitHub`: http://github.com
-.. _`strace`: http://en.wikipedia.org/wiki/Strace
-.. _`ltrace`: http://en.wikipedia.org/wiki/Ltrace
-.. _`lsof`: http://en.wikipedia.org/wiki/Lsof
+.. _`GitHub`: https://github.com
+.. _`strace`: https://en.wikipedia.org/wiki/Strace
+.. _`ltrace`: https://en.wikipedia.org/wiki/Ltrace
+.. _`lsof`: https://en.wikipedia.org/wiki/Lsof
 
 .. _issue-trackers:
 
@@ -244,20 +244,21 @@ Issue Trackers
 Bugs for a package in the Celery ecosystem should be reported to the relevant
 issue tracker.
 
-* Celery: http://github.com/celery/celery/issues/
-* Kombu: http://github.com/celery/kombu/issues
-* pyamqp: http://github.com/celery/pyamqp/issues
-* librabbitmq: http://github.com/celery/librabbitmq/issues
-* Django-Celery: http://github.com/celery/django-celery/issues
+* :pypi:`celery`: https://github.com/celery/celery/issues/
+* :pypi:`kombu`: https://github.com/celery/kombu/issues
+* :pypi:`amqp`: https://github.com/celery/py-amqp/issues
+* :pypi:`vine`: https://github.com/celery/vine/issues
+* :pypi:`librabbitmq`: https://github.com/celery/librabbitmq/issues
+* :pypi:`django-celery`: https://github.com/celery/django-celery/issues
 
 If you are unsure of the origin of the bug you can ask the
 :ref:`mailing-list`, or just use the Celery issue tracker.
 
-Contributors guide to the codebase
-==================================
+Contributors guide to the code base
+===================================
 
 There's a separate section for internal details,
-including details about the codebase and a style guide.
+including details about the code base and a style guide.
 
 Read :ref:`internals-guide` for more!
 
@@ -268,7 +269,7 @@ Versions
 
 Version numbers consists of a major version, minor version and a release number.
 Since version 2.1.0 we use the versioning semantics described by
-semver: http://semver.org.
+SemVer: http://semver.org.
 
 Stable releases are published at PyPI
 while development releases are only available in the GitHub git repository as tags.
@@ -281,16 +282,18 @@ Branches
 
 Current active version branches:
 
-* master (http://github.com/celery/celery/tree/master)
-* 3.1 (http://github.com/celery/celery/tree/3.1)
-* 3.0 (http://github.com/celery/celery/tree/3.0)
+* master (https://github.com/celery/celery/tree/master)
+* 3.1 (https://github.com/celery/celery/tree/3.1)
+* 3.0 (https://github.com/celery/celery/tree/3.0)
 
 You can see the state of any branch by looking at the Changelog:
 
     https://github.com/celery/celery/blob/master/Changelog
 
 If the branch is in active development the topmost version info should
-contain metadata like::
+contain meta-data like:
+
+.. code-block:: restructuredtext
 
     2.4.0
     ======
@@ -348,17 +351,17 @@ An archived version is named ``X.Y-archived``.
 
 Our currently archived branches are:
 
-* 2.5-archived
+* :github_branch:`2.5-archived`
 
-* 2.4-archived
+* :github_branch:`2.4-archived`
 
-* 2.3-archived
+* :github_branch:`2.3-archived`
 
-* 2.1-archived
+* :github_branch:`2.1-archived`
 
-* 2.0-archived
+* :github_branch:`2.0-archived`
 
-* 1.0-archived
+* :github_branch:`1.0-archived`
 
 Feature branches
 ----------------
@@ -397,35 +400,35 @@ Forking and setting up the repository
 -------------------------------------
 
 First you need to fork the Celery repository, a good introduction to this
-is in the Github Guide: `Fork a Repo`_.
+is in the GitHub Guide: `Fork a Repo`_.
 
 After you have cloned the repository you should checkout your copy
 to a directory on your machine:
 
-.. code-block:: bash
+.. code-block:: console
 
     $ git clone git@github.com:username/celery.git
 
 When the repository is cloned enter the directory to set up easy access
 to upstream changes:
 
-.. code-block:: bash
+.. code-block:: console
 
     $ cd celery
     $ git remote add upstream git://github.com/celery/celery.git
     $ git fetch upstream
 
 If you need to pull in new changes from upstream you should
-always use the :option:`--rebase` option to ``git pull``:
+always use the ``--rebase`` option to ``git pull``:
 
-.. code-block:: bash
+.. code-block:: console
 
     git pull --rebase upstream master
 
 With this option you don't clutter the history with merging
 commit notes. See `Rebasing merge commits in git`_.
 If you want to learn more about rebasing see the `Rebase`_
-section in the Github guides.
+section in the GitHub guides.
 
 If you need to work on a different branch than ``master`` you can
 fetch and checkout a remote branch like this::
@@ -446,41 +449,50 @@ To run the Celery test suite you need to install a few dependencies.
 A complete list of the dependencies needed are located in
 :file:`requirements/test.txt`.
 
-Installing the test requirements:
+If you're working on the development version, then you need to
+install the development requirements first:
 
-.. code-block:: bash
+.. code-block:: console
+
+    $ pip install -U -r requirements/dev.txt
+
+Both the stable and the development version have testing related
+dependencies, so install these next:
+
+.. code-block:: console
 
     $ pip install -U -r requirements/test.txt
+    $ pip install -U -r requirements/default.txt
 
-When installation of dependencies is complete you can execute
-the test suite by calling ``nosetests``:
+After installing the dependencies required, you can now execute
+the test suite by calling :pypi:`nosetests <nose>`:
 
-.. code-block:: bash
+.. code-block:: console
 
     $ nosetests
 
-Some useful options to :program:`nosetests` are:
+Some useful options to :command:`nosetests` are:
 
-* :option:`-x`
+* ``-x``
 
     Stop running the tests at the first test that fails.
 
-* :option:`-s`
+* ``-s``
 
     Don't capture output
 
-* :option:`--nologcapture`
+* ``-nologcapture``
 
     Don't capture log output.
 
-* :option:`-v`
+* ``-v``
 
     Run with verbose output.
 
 If you want to run the tests for a single test file only
 you can do so like this:
 
-.. code-block:: bash
+.. code-block:: console
 
     $ nosetests celery.tests.test_worker.test_worker_job
 
@@ -493,7 +505,7 @@ When your feature/bugfix is complete you may want to submit
 a pull requests so that it can be reviewed by the maintainers.
 
 Creating pull requests is easy, and also let you track the progress
-of your contribution.  Read the `Pull Requests`_ section in the Github
+of your contribution.  Read the `Pull Requests`_ section in the GitHub
 Guide to learn how this is done.
 
 You can also attach pull requests to existing issues by following
@@ -506,17 +518,17 @@ the steps outlined here: http://bit.ly/koJoso
 Calculating test coverage
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
-To calculate test coverage you must first install the :mod:`coverage` module.
+To calculate test coverage you must first install the :pypi:`coverage` module.
 
-Installing the :mod:`coverage` module:
+Installing the :pypi:`coverage` module:
 
-.. code-block:: bash
+.. code-block:: console
 
     $ pip install -U coverage
 
 Code coverage in HTML:
 
-.. code-block:: bash
+.. code-block:: console
 
     $ nosetests --with-coverage --cover-html
 
@@ -525,7 +537,7 @@ The coverage output will then be located at
 
 Code coverage in XML (Cobertura-style):
 
-.. code-block:: bash
+.. code-block:: console
 
     $ nosetests --with-coverage --cover-xml --cover-xml-file=coverage.xml
 
@@ -536,21 +548,20 @@ The coverage XML output will then be located at :file:`coverage.xml`
 Running the tests on all supported Python versions
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-There is a ``tox`` configuration file in the top directory of the
+There is a :pypi:`tox` configuration file in the top directory of the
 distribution.
 
 To run the tests for all supported Python versions simply execute:
 
-.. code-block:: bash
+.. code-block:: console
 
     $ tox
 
-If you only want to test specific Python versions use the :option:`-e`
-option:
+Use the ``tox -e`` option if you only want to test specific Python versions:
 
-.. code-block:: bash
+.. code-block:: console
 
-    $ tox -e py26
+    $ tox -e 2.7
 
 Building the documentation
 --------------------------
@@ -558,21 +569,21 @@ Building the documentation
 To build the documentation you need to install the dependencies
 listed in :file:`requirements/docs.txt`:
 
-.. code-block:: bash
+.. code-block:: console
 
     $ pip install -U -r requirements/docs.txt
 
 After these dependencies are installed you should be able to
 build the docs by running:
 
-.. code-block:: bash
+.. code-block:: console
 
     $ cd docs
-    $ rm -rf .build
+    $ rm -rf _build
     $ make html
 
 Make sure there are no errors or warnings in the build output.
-After building succeeds the documentation is available at :file:`.build/html`.
+After building succeeds the documentation is available at :file:`_build/html`.
 
 .. _contributing-verify:
 
@@ -584,7 +595,7 @@ can be found in :file:`requirements/pkgutils.txt`.
 
 Installing the dependencies:
 
-.. code-block:: bash
+.. code-block:: console
 
     $ pip install -U -r requirements/pkgutils.txt
 
@@ -594,14 +605,14 @@ pyflakes & PEP8
 To ensure that your changes conform to PEP8 and to run pyflakes
 execute:
 
-.. code-block:: bash
+.. code-block:: console
 
     $ make flakecheck
 
 To not return a negative exit code when this command fails use
 the ``flakes`` target instead:
 
-.. code-block:: bash
+.. code-block:: console
 
     $ make flakes§
 
@@ -611,7 +622,7 @@ API reference
 To make sure that all modules have a corresponding section in the API
 reference please execute:
 
-.. code-block:: bash
+.. code-block:: console
 
     $ make apicheck
     $ make indexcheck
@@ -628,14 +639,14 @@ and this module is considered part of the public API, use the following steps:
 
 Use an existing file as a template:
 
-.. code-block:: bash
+.. code-block:: console
 
     $ cd docs/reference/
     $ cp celery.schedules.rst celery.worker.awesome.rst
 
 Edit the file using your favorite editor:
 
-.. code-block:: bash
+.. code-block:: console
 
     $ vim celery.worker.awesome.rst
 
@@ -645,7 +656,7 @@ Edit the file using your favorite editor:
 
 Edit the index using your favorite editor:
 
-.. code-block:: bash
+.. code-block:: console
 
     $ vim index.rst
 
@@ -654,7 +665,7 @@ Edit the index using your favorite editor:
 
 Commit your changes:
 
-.. code-block:: bash
+.. code-block:: console
 
     # Add the file to git
     $ git add celery.worker.awesome.rst
@@ -714,7 +725,7 @@ is following the conventions.
 
 * Lines should not exceed 78 columns.
 
-  You can enforce this in :program:`vim` by setting the ``textwidth`` option:
+  You can enforce this in :command:`vim` by setting the ``textwidth`` option:
 
   .. code-block:: vim
 
@@ -728,14 +739,14 @@ is following the conventions.
 
     * Python standard library (`import xxx`)
     * Python standard library ('from xxx import`)
-    * Third party packages.
+    * Third-party packages.
     * Other modules from the current package.
 
     or in case of code using Django:
 
     * Python standard library (`import xxx`)
     * Python standard library ('from xxx import`)
-    * Third party packages.
+    * Third-party packages.
     * Django packages.
     * Other modules from the current package.
 
@@ -755,7 +766,7 @@ is following the conventions.
         from .five import zip_longest, items, range
         from .utils import timeutils
 
-* Wildcard imports must not be used (`from xxx import *`).
+* Wild-card imports must not be used (`from xxx import *`).
 
 * For distributions where Python 2.5 is the oldest support version
   additional rules apply:
@@ -764,7 +775,7 @@ is following the conventions.
 
         from __future__ import absolute_import
 
-    * If the module uses the with statement and must be compatible
+    * If the module uses the :keyword:`with` statement and must be compatible
       with Python 2.5 (celery is not) then it must also enable that::
 
         from __future__ import with_statement
@@ -803,18 +814,22 @@ Some features like a new result backend may require additional libraries
 that the user must install.
 
 We use setuptools `extra_requires` for this, and all new optional features
-that require 3rd party libraries must be added.
+that require third-party libraries must be added.
 
 1) Add a new requirements file in `requirements/extras`
 
     E.g. for the Cassandra backend this is
-    :file:`requirements/extras/cassandra.txt`, and the file looks like this::
+    :file:`requirements/extras/cassandra.txt`, and the file looks like this:
+
+    .. code-block:: text
 
         pycassa
 
     These are pip requirement files so you can have version specifiers and
     multiple packages are separated by newline.  A more complex example could
     be:
+
+    .. code-block:: text
 
         # pycassa 2.0 breaks Foo
         pycassa>=1.0,<2.0
@@ -823,14 +838,14 @@ that require 3rd party libraries must be added.
 2) Modify ``setup.py``
 
     After the requirements file is added you need to add it as an option
-    to ``setup.py`` in the ``extras_require`` section::
+    to :file:`setup.py` in the ``extras_require`` section::
 
         extra['extras_require'] = {
             # ...
             'cassandra': extras('cassandra.txt'),
         }
 
-3) Document the new feature in ``docs/includes/installation.txt``
+3) Document the new feature in :file:`docs/includes/installation.txt`
 
     You must add your feature to the list in the :ref:`bundles` section
     of :file:`docs/includes/installation.txt`.
@@ -838,7 +853,7 @@ that require 3rd party libraries must be added.
     After you've made changes to this file you need to render
     the distro :file:`README` file:
 
-    .. code-block:: bash
+    .. code-block:: console
 
         $ pip install -U requirements/pkgutils.txt
         $ make readme
@@ -846,10 +861,10 @@ that require 3rd party libraries must be added.
 
 That's all that needs to be done, but remember that if your feature
 adds additional configuration options then these needs to be documented
-in ``docs/configuration.rst``.  Also all settings need to be added to the
-``celery/app/defaults.py`` module.
+in :file:`docs/configuration.rst`.  Also all settings need to be added to the
+:file:`celery/app/defaults.py` module.
 
-Result backends require a separate section in the ``docs/configuration.rst``
+Result backends require a separate section in the :file:`docs/configuration.rst`
 file.
 
 .. _contact_information:
@@ -874,11 +889,28 @@ Ask Solem
 :github: https://github.com/ask
 :twitter: http://twitter.com/#!/asksol
 
+Dmitry Malinovsky
+~~~~~~~~~~~~~~~~~
+
+:github: https://github.com/malinoff
+:twitter: https://twitter.com/__malinoff__
+
+Ionel Cristian Mărieș
+~~~~~~~~~~~~~~~~~~~~~
+
+:github: https://github.com/ionelmc
+:twitter: https://twitter.com/ionelmc
+
 Mher Movsisyan
 ~~~~~~~~~~~~~~
 
 :github: https://github.com/mher
 :twitter: http://twitter.com/#!/movsm
+
+Omer Katz
+~~~~~~~~~
+:github: https://github.com/thedrow
+:twitter: https://twitter.com/the_drow
 
 Steeve Morin
 ~~~~~~~~~~~~
@@ -911,61 +943,69 @@ Jan Henrik Helmers
 Packages
 ========
 
-celery
-------
+``celery``
+----------
 
 :git: https://github.com/celery/celery
 :CI: http://travis-ci.org/#!/celery/celery
+:Windows-CI: https://ci.appveyor.com/project/ask/celery
 :PyPI: http://pypi.python.org/pypi/celery
 :docs: http://docs.celeryproject.org
 
-kombu
------
+``kombu``
+---------
 
 Messaging library.
 
 :git: https://github.com/celery/kombu
 :CI: http://travis-ci.org/#!/celery/kombu
+:Windows-CI: https://ci.appveyor.com/project/ask/kombu
 :PyPI: http://pypi.python.org/pypi/kombu
 :docs: http://kombu.readthedocs.org
 
-amqp
-----
+``amqp``
+--------
 
 Python AMQP 0.9.1 client.
 
 :git: https://github.com/celery/py-amqp
 :CI: http://travis-ci.org/#!/celery/py-amqp
+:Windows-CI: https://ci.appveyor.com/project/ask/py-amqp
 :PyPI: http://pypi.python.org/pypi/amqp
 :docs: http://amqp.readthedocs.org
 
-billiard
+``vine``
 --------
+
+Promise/deferred implementation.
+
+:git: https://github.com/celery/vine/
+:CI: http://travis-ci.org/#!/celery/vine/
+:Windows-CI: https://ci.appveyor.com/project/ask/vine
+:PyPI: http://pypi.python.org/pypi/vine
+:docs: http://vine.readthedocs.org
+
+``billiard``
+------------
 
 Fork of multiprocessing containing improvements
 that will eventually be merged into the Python stdlib.
 
 :git: https://github.com/celery/billiard
+:CI: http://travis-ci.org/#!/celery/billiard/
+:Windows-CI: https://ci.appveyor.com/project/ask/billiard
 :PyPI: http://pypi.python.org/pypi/billiard
 
-librabbitmq
------------
+``librabbitmq``
+---------------
 
 Very fast Python AMQP client written in C.
 
 :git: https://github.com/celery/librabbitmq
 :PyPI: http://pypi.python.org/pypi/librabbitmq
 
-celerymon
----------
-
-Celery monitor web-service.
-
-:git: https://github.com/celery/celerymon
-:PyPI: http://pypi.python.org/pypi/celerymon
-
-django-celery
--------------
+``django-celery``
+-----------------
 
 Django <-> Celery Integration.
 
@@ -973,16 +1013,16 @@ Django <-> Celery Integration.
 :PyPI: http://pypi.python.org/pypi/django-celery
 :docs: http://docs.celeryproject.org/en/latest/django
 
-cl
---
+``cell``
+--------
 
 Actor library.
 
-:git: https://github.com/celery/cl
-:PyPI: http://pypi.python.org/pypi/cl
+:git: https://github.com/celery/cell
+:PyPI: http://pypi.python.org/pypi/cell
 
-cyme
-----
+``cyme``
+--------
 
 Distributed Celery Instance manager.
 
@@ -994,34 +1034,39 @@ Distributed Celery Instance manager.
 Deprecated
 ----------
 
-- Flask-Celery
+- ``Flask-Celery``
 
 :git: https://github.com/ask/Flask-Celery
 :PyPI: http://pypi.python.org/pypi/Flask-Celery
 
-- carrot
+- ``celerymon``
+
+:git: https://github.com/celery/celerymon
+:PyPI: http://pypi.python.org/pypi/celerymon
+
+- ``carrot``
 
 :git: https://github.com/ask/carrot
 :PyPI: http://pypi.python.org/pypi/carrot
 
-- ghettoq
+- ``ghettoq``
 
 :git: https://github.com/ask/ghettoq
 :PyPI: http://pypi.python.org/pypi/ghettoq
 
-- kombu-sqlalchemy
+- ``kombu-sqlalchemy``
 
 :git: https://github.com/ask/kombu-sqlalchemy
 :PyPI: http://pypi.python.org/pypi/kombu-sqlalchemy
 
-- django-kombu
+- ``django-kombu``
 
 :git: https://github.com/ask/django-kombu
 :PyPI: http://pypi.python.org/pypi/django-kombu
 
-- pylibrabbitmq
+- ``pylibrabbitmq``
 
-Old name for :mod:`librabbitmq`.
+Old name for :pypi:`librabbitmq`.
 
 :git: :const:`None`
 :PyPI: http://pypi.python.org/pypi/pylibrabbitmq
@@ -1045,19 +1090,19 @@ the :file:`README` files.  There is a script to convert sphinx syntax
 to generic reStructured Text syntax, and the make target `readme`
 does this for you:
 
-.. code-block:: bash
+.. code-block:: console
 
     $ make readme
 
 Now commit the changes:
 
-.. code-block:: bash
+.. code-block:: console
 
     $ git commit -a -m "Bumps version to X.Y.Z"
 
 and make a new version tag:
 
-.. code-block:: bash
+.. code-block:: console
 
     $ git tag vX.Y.Z
     $ git push --tags
@@ -1065,11 +1110,14 @@ and make a new version tag:
 Releasing
 ---------
 
-Commands to make a new public stable release::
+Commands to make a new public stable release:
+
+.. code-block:: console
 
     $ make distcheck  # checks pep8, autodoc index, runs tests and more
     $ make dist  # NOTE: Runs git clean -xdf and removes files not in the repo.
-    $ python setup.py sdist bdist_wheel upload  # Upload package to PyPI
+    $ python setup.py sdist upload --sign --identity='Celery Security Team'
+    $ python setup.py bdist_wheel upload --sign --identity='Celery Security Team'
 
 If this is a new release series then you also need to do the
 following:

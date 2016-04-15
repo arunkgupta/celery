@@ -45,7 +45,7 @@ class Spec(object):
     """AMQP Command specification.
 
     Used to convert arguments to Python values and display various help
-    and tooltips.
+    and tool-tips.
 
     :param args: see :attr:`args`.
     :keyword returns: see :attr:`returns`.
@@ -182,6 +182,16 @@ class AMQShell(cmd.Cmd):
         'basic.ack': Spec(('delivery_tag', int)),
     }
 
+    def _prepare_spec(self, conn):
+        # XXX Hack to fix Issue #2013
+        from amqp import Connection, Message
+        if isinstance(conn.connection, Connection):
+            self.amqp['basic.publish'] = Spec(('msg', Message),
+                                              ('exchange', str),
+                                              ('routing_key', str),
+                                              ('mandatory', bool, 'no'),
+                                              ('immediate', bool, 'no'))
+
     def __init__(self, *args, **kwargs):
         self.connect = kwargs.pop('connect')
         self.silent = kwargs.pop('silent', False)
@@ -249,7 +259,7 @@ class AMQShell(cmd.Cmd):
     def dispatch(self, cmd, arglist):
         """Dispatch and execute the command.
 
-        Lookup order is: :attr:`builtins` -> :attr:`amqp`.
+        Look-up order is: :attr:`builtins` -> :attr:`amqp`.
 
         """
         if isinstance(arglist, string_t):
@@ -298,6 +308,7 @@ class AMQShell(cmd.Cmd):
     def _reconnect(self):
         """Re-establish connection to the AMQP server."""
         self.conn = self.connect(self.conn)
+        self._prepare_spec(self.conn)
         self.chan = self.conn.default_channel
         self.needs_reconnect = False
 
@@ -343,19 +354,21 @@ class AMQPAdmin(object):
 class amqp(Command):
     """AMQP Administration Shell.
 
-    Also works for non-amqp transports (but not ones that
+    Also works for non-AMQP transports (but not ones that
     store declarations in memory).
 
-    Examples::
+    Examples:
 
-        celery amqp
+    .. code-block:: console
+
+        $ celery amqp
             start shell mode
-        celery amqp help
+        $ celery amqp help
             show list of commands
 
-        celery amqp exchange.delete name
-        celery amqp queue.delete queue
-        celery amqp queue.delete queue yes yes
+        $ celery amqp exchange.delete name
+        $ celery amqp queue.delete queue
+        $ celery amqp queue.delete queue yes yes
 
     """
 

@@ -1,7 +1,6 @@
-from __future__ import absolute_import
+from __future__ import absolute_import, unicode_literals
 
 import pickle
-import socket
 
 from contextlib import contextmanager
 from datetime import timedelta
@@ -11,13 +10,11 @@ from billiard.einfo import ExceptionInfo
 
 from celery import states
 from celery.backends.amqp import AMQPBackend
-from celery.exceptions import TimeoutError
 from celery.five import Empty, Queue, range
+from celery.result import AsyncResult
 from celery.utils import uuid
 
-from celery.tests.case import (
-    AppCase, Mock, depends_on_current_app, patch, sleepdeprived,
-)
+from celery.tests.case import AppCase, Mock, depends_on_current_app, mock
 
 
 class SomeClass(object):
@@ -28,9 +25,26 @@ class SomeClass(object):
 
 class test_AMQPBackend(AppCase):
 
+    def setup(self):
+        self.app.conf.result_cache_max = 100
+
     def create_backend(self, **opts):
         opts = dict(dict(serializer='pickle', persistent=True), **opts)
         return AMQPBackend(self.app, **opts)
+
+    def test_destination_for(self):
+        b = self.create_backend()
+        request = Mock()
+        self.assertTupleEqual(
+            b.destination_for('id', request),
+            (b.rkey('id'), request.correlation_id),
+        )
+
+    def test_store_result__no_routing_key(self):
+        b = self.create_backend()
+        b.destination_for = Mock()
+        b.destination_for.return_value = None, None
+        b.store_result('id', None, states.SUCCESS)
 
     def test_mark_as_done(self):
         tb1 = self.create_backend(max_cached_results=1)
@@ -39,7 +53,7 @@ class test_AMQPBackend(AppCase):
         tid = uuid()
 
         tb1.mark_as_done(tid, 42)
-        self.assertEqual(tb2.get_status(tid), states.SUCCESS)
+        self.assertEqual(tb2.get_state(tid), states.SUCCESS)
         self.assertEqual(tb2.get_result(tid), 42)
         self.assertTrue(tb2._cache.get(tid))
         self.assertTrue(tb2.get_result(tid), 42)
@@ -74,7 +88,7 @@ class test_AMQPBackend(AppCase):
         except KeyError as exception:
             einfo = ExceptionInfo()
             tb1.mark_as_failure(tid3, exception, traceback=einfo.traceback)
-            self.assertEqual(tb2.get_status(tid3), states.FAILURE)
+            self.assertEqual(tb2.get_state(tid3), states.FAILURE)
             self.assertIsInstance(tb2.get_result(tid3), KeyError)
             self.assertEqual(tb2.get_traceback(tid3), einfo.traceback)
 
@@ -96,7 +110,7 @@ class test_AMQPBackend(AppCase):
         b = self.create_backend(expires=timedelta(minutes=1))
         self.assertEqual(b.queue_arguments.get('x-expires'), 60 * 1000.0)
 
-    @sleepdeprived()
+    @mock.sleepdeprived()
     def test_store_result_retries(self):
         iterations = [0]
         stop_raising_at = [5]
@@ -139,6 +153,7 @@ class test_AMQPBackend(AppCase):
             def __init__(self, **merge):
                 self.payload = dict({'status': states.STARTED,
                                      'result': None}, **merge)
+                self.properties = {'correlation_id': merge.get('task_id')}
                 self.body = pickle.dumps(self.payload)
                 self.content_type = 'application/x-python-serialize'
                 self.content_encoding = 'binary'
@@ -221,112 +236,22 @@ class test_AMQPBackend(AppCase):
                 'Returns cache if no new states',
             )
 
-    def test_wait_for(self):
-        b = self.create_backend()
-
+    def test_drain_events_decodes_exceptions_in_meta(self):
         tid = uuid()
-        with self.assertRaises(TimeoutError):
-            b.wait_for(tid, timeout=0.1)
-        b.store_result(tid, None, states.STARTED)
-        with self.assertRaises(TimeoutError):
-            b.wait_for(tid, timeout=0.1)
-        b.store_result(tid, None, states.RETRY)
-        with self.assertRaises(TimeoutError):
-            b.wait_for(tid, timeout=0.1)
-        b.store_result(tid, 42, states.SUCCESS)
-        self.assertEqual(b.wait_for(tid, timeout=1)['result'], 42)
-        b.store_result(tid, 56, states.SUCCESS)
-        self.assertEqual(b.wait_for(tid, timeout=1)['result'], 42,
-                         'result is cached')
-        self.assertEqual(b.wait_for(tid, timeout=1, cache=False)['result'], 56)
-        b.store_result(tid, KeyError('foo'), states.FAILURE)
-        res = b.wait_for(tid, timeout=1, cache=False)
-        self.assertEqual(res['status'], states.FAILURE)
-        b.store_result(tid, KeyError('foo'), states.PENDING)
-        with self.assertRaises(TimeoutError):
-            b.wait_for(tid, timeout=0.01, cache=False)
+        b = self.create_backend(serializer='json')
+        b.store_result(tid, RuntimeError('aap'), states.FAILURE)
+        result = AsyncResult(tid, backend=b)
 
-    def test_drain_events_remaining_timeouts(self):
+        with self.assertRaises(Exception) as cm:
+            result.get()
 
-        class Connection(object):
-
-            def drain_events(self, timeout=None):
-                pass
-
-        b = self.create_backend()
-        with self.app.pool.acquire_channel(block=False) as (_, channel):
-            binding = b._create_binding(uuid())
-            consumer = b.Consumer(channel, binding, no_ack=True)
-            with self.assertRaises(socket.timeout):
-                b.drain_events(Connection(), consumer, timeout=0.1)
-
-    def test_get_many(self):
-        b = self.create_backend(max_cached_results=10)
-
-        tids = []
-        for i in range(10):
-            tid = uuid()
-            b.store_result(tid, i, states.SUCCESS)
-            tids.append(tid)
-
-        res = list(b.get_many(tids, timeout=1))
-        expected_results = [
-            (_tid, {'status': states.SUCCESS,
-                    'result': i,
-                    'traceback': None,
-                    'task_id': _tid,
-                    'children': None})
-            for i, _tid in enumerate(tids)
-        ]
-        self.assertEqual(sorted(res), sorted(expected_results))
-        self.assertDictEqual(b._cache[res[0][0]], res[0][1])
-        cached_res = list(b.get_many(tids, timeout=1))
-        self.assertEqual(sorted(cached_res), sorted(expected_results))
-
-        # times out when not ready in cache (this shouldn't happen)
-        b._cache[res[0][0]]['status'] = states.RETRY
-        with self.assertRaises(socket.timeout):
-            list(b.get_many(tids, timeout=0.01))
-
-        # times out when result not yet ready
-        with self.assertRaises(socket.timeout):
-            tids = [uuid()]
-            b.store_result(tids[0], i, states.PENDING)
-            list(b.get_many(tids, timeout=0.01))
-
-    def test_get_many_raises_outer_block(self):
-
-        class Backend(AMQPBackend):
-
-            def Consumer(*args, **kwargs):
-                raise KeyError('foo')
-
-        b = Backend(self.app)
-        with self.assertRaises(KeyError):
-            next(b.get_many(['id1']))
-
-    def test_get_many_raises_inner_block(self):
-        with patch('kombu.connection.Connection.drain_events') as drain:
-            drain.side_effect = KeyError('foo')
-            b = AMQPBackend(self.app)
-            with self.assertRaises(KeyError):
-                next(b.get_many(['id1']))
-
-    def test_consume_raises_inner_block(self):
-        with patch('kombu.connection.Connection.drain_events') as drain:
-
-            def se(*args, **kwargs):
-                drain.side_effect = ValueError()
-                raise KeyError('foo')
-            drain.side_effect = se
-            b = AMQPBackend(self.app)
-            with self.assertRaises(ValueError):
-                next(b.consume('id1'))
+        self.assertEqual(cm.exception.__class__.__name__, 'RuntimeError')
+        self.assertEqual(str(cm.exception), 'aap')
 
     def test_no_expires(self):
         b = self.create_backend(expires=None)
         app = self.app
-        app.conf.CELERY_TASK_RESULT_EXPIRES = None
+        app.conf.result_expires = None
         b = self.create_backend(expires=None)
         with self.assertRaises(KeyError):
             b.queue_arguments['x-expires']

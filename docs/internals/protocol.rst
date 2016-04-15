@@ -46,6 +46,9 @@ Definition
         'expires'; iso8601 expires,
         'retries': int retries,
         'timelimit': (soft, hard),
+        'argsrepr': str repr(args),
+        'kwargsrepr': str repr(kwargs),
+        'origin': str nodename,
     }
 
     body = (
@@ -68,12 +71,21 @@ This example sends a task message using version 2 of the protocol:
 
     # chain: add(add(add(2, 2), 4), 8) == 2 + 2 + 4 + 8
 
+    import json
+    import os
+    import socket
+
     task_id = uuid()
+    args = (2, 2)
+    kwargs = {}
     basic_publish(
-        message=json.dumps(([2, 2], {}, None),
+        message=json.dumps((args, kwargs, None),
         application_headers={
             'lang': 'py',
             'task': 'proj.tasks.add',
+            'argsrepr': repr(args),
+            'kwargsrepr': repr(kwargs),
+            'origin': '@'.join([os.getpid(), socket.gethostname()])
         }
         properties={
             'correlation_id': task_id,
@@ -92,7 +104,7 @@ Changes from version 1
     Worker may redirect the message to a worker that supports
     the language.
 
-- Metadata moved to headers.
+- Meta-data moved to headers.
 
     This means that workers/intermediates can inspect the message
     and make decisions based on the headers without decoding
@@ -111,7 +123,7 @@ Changes from version 1
     - If a message uses raw encoding then the raw data
       will be passed as a single argument to the function.
 
-    - Java/C, etc. can use a thrift/protobuf document as the body
+    - Java/C, etc. can use a Thrift/protobuf document as the body
 
 - Dispatches to actor based on ``task``, ``meth`` headers
 
@@ -125,7 +137,9 @@ Changes from version 1
 
     This is fixed in the new message protocol by specifying
     a list of signatures, each task will then pop a task off the list
-    when sending the next message::
+    when sending the next message:
+
+    .. code-block:: python
 
         execute_task(message)
         chain = embed['chain']
@@ -135,28 +149,29 @@ Changes from version 1
 
 - ``correlation_id`` replaces ``task_id`` field.
 
-- ``root_id`` and ``parent_id`` fields helps keep track of workflows.
+- ``root_id`` and ``parent_id`` fields helps keep track of work-flows.
 
 - ``shadow`` lets you specify a different name for logs, monitors
-  can be used for e.g. meta tasks that calls any function::
+  can be used for e.g. meta tasks that calls any function:
 
-    from celery.utils.imports import qualname
+    .. code-block:: python
 
-    class PickleTask(Task):
-        abstract = True
+        from celery.utils.imports import qualname
 
-        def unpack_args(self, fun, args=()):
-            return fun, args
+        class PickleTask(Task):
 
-        def apply_async(self, args, kwargs, **options):
-            fun, real_args = self.unpack_args(*args)
-            return super(PickleTask, self).apply_async(
-                (fun, real_args, kwargs), shadow=qualname(fun), **options
-            )
+            def unpack_args(self, fun, args=()):
+                return fun, args
 
-    @app.task(base=PickleTask)
-    def call(fun, args, kwargs):
-        return fun(*args, **kwargs)
+            def apply_async(self, args, kwargs, **options):
+                fun, real_args = self.unpack_args(*args)
+                return super(PickleTask, self).apply_async(
+                    (fun, real_args, kwargs), shadow=qualname(fun), **options
+                )
+
+        @app.task(base=PickleTask)
+        def call(fun, args, kwargs):
+            return fun(*args, **kwargs)
 
 
 .. _message-protocol-task-v1:
@@ -172,41 +187,41 @@ to read the fields.
 Message body
 ~~~~~~~~~~~~
 
-* task
+* ``task``
     :`string`:
 
     Name of the task. **required**
 
-* id
+* ``id``
     :`string`:
 
     Unique id of the task (UUID). **required**
 
-* args
+* ``args``
     :`list`:
 
     List of arguments. Will be an empty list if not provided.
 
-* kwargs
+* ``kwargs``
     :`dictionary`:
 
     Dictionary of keyword arguments. Will be an empty dictionary if not
     provided.
 
-* retries
+* ``retries``
     :`int`:
 
     Current number of times this task has been retried.
     Defaults to `0` if not specified.
 
-* eta
+* ``eta``
     :`string` (ISO 8601):
 
     Estimated time of arrival. This is the date and time in ISO 8601
     format. If not provided the message is not scheduled, but will be
     executed asap.
 
-* expires
+* ``expires``
     :`string` (ISO 8601):
 
     .. versionadded:: 2.0.2
@@ -216,12 +231,12 @@ Message body
     will be expired when the message is received and the expiration date
     has been exceeded.
 
-* taskset
+* ``taskset``
     :`string`:
 
-    The taskset this task is part of (if any).
+    The group this task is part of (if any).
 
-* chord
+* ``chord``
     :`Signature`:
 
     .. versionadded:: 2.3
@@ -230,7 +245,7 @@ Message body
     of this key is the body of the cord that should be executed when all of
     the tasks in the header has returned.
 
-* utc
+* ``utc``
     :`bool`:
 
     .. versionadded:: 2.5
@@ -238,21 +253,21 @@ Message body
     If true time uses the UTC timezone, if not the current local timezone
     should be used.
 
-* callbacks
+* ``callbacks``
     :`<list>Signature`:
 
     .. versionadded:: 3.0
 
     A list of signatures to call if the task exited successfully.
 
-* errbacks
+* ``errbacks``
     :`<list>Signature`:
 
     .. versionadded:: 3.0
 
     A list of signatures to call if an error occurs while executing the task.
 
-* timelimit
+* ``timelimit``
     :`<tuple>(float, float)`:
 
     .. versionadded:: 3.1
@@ -261,7 +276,7 @@ Message body
     limit value (`int`/`float` or :const:`None` for no limit).
 
     Example value specifying a soft time limit of 3 seconds, and a hard time
-    limt of 10 seconds::
+    limit of 10 seconds::
 
         {'timelimit': (3.0, 10.0)}
 
@@ -269,7 +284,7 @@ Message body
 Example message
 ~~~~~~~~~~~~~~~
 
-This is an example invocation of a `celery.task.ping` task in JSON
+This is an example invocation of a `celery.task.ping` task in json
 format:
 
 .. code-block:: javascript
@@ -306,7 +321,7 @@ Event Messages
 Event messages are always JSON serialized and can contain arbitrary message
 body fields.
 
-Since version 3.2. the body can consist of either a single mapping (one event),
+Since version 4.0. the body can consist of either a single mapping (one event),
 or a list of mappings (multiple events).
 
 There are also standard fields that must always be present in an event
@@ -318,7 +333,7 @@ Standard body fields
 - *string* ``type``
 
     The type of event.  This is a string containing the *category* and
-    *action* separated by a dash delimeter (e.g. ``task-succeeded``).
+    *action* separated by a dash delimiter (e.g. ``task-succeeded``).
 
 - *string* ``hostname``
 
@@ -326,11 +341,11 @@ Standard body fields
 
 - *unsigned long long* ``clock``
 
-    The logical clock value for this event (Lamport timestamp).
+    The logical clock value for this event (Lamport time-stamp).
 
 - *float* ``timestamp``
 
-    The UNIX timestamp corresponding to the time of when the event occurred.
+    The UNIX time-stamp corresponding to the time of when the event occurred.
 
 - *signed short* ``utcoffset``
 

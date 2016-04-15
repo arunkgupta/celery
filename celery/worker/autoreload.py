@@ -1,11 +1,12 @@
 # -*- coding: utf-8 -*-
 """
-    celery.worker.autoreload
-    ~~~~~~~~~~~~~~~~~~~~~~~~
+    ``celery.worker.autoreload``
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
     This module implements automatic module reloading
+
 """
-from __future__ import absolute_import
+from __future__ import absolute_import, unicode_literals
 
 import hashlib
 import os
@@ -46,7 +47,7 @@ logger = get_logger(__name__)
 class WorkerComponent(bootsteps.StartStopStep):
     label = 'Autoreloader'
     conditional = True
-    requires = (Pool, )
+    requires = (Pool,)
 
     def __init__(self, w, autoreload=None, **kwargs):
         self.enabled = w.autoreload = autoreload

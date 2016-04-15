@@ -1,4 +1,4 @@
-from __future__ import absolute_import
+from __future__ import absolute_import, unicode_literals
 
 from celery.app.annotations import MapAnnotation, prepare
 from celery.utils.imports import qualname
@@ -48,7 +48,7 @@ class test_prepare(AnnotationCase):
     def test_returns_list(self):
         self.assertListEqual(prepare(1), [1])
         self.assertListEqual(prepare([1]), [1])
-        self.assertListEqual(prepare((1, )), [1])
+        self.assertListEqual(prepare((1,)), [1])
         self.assertEqual(prepare(None), ())
 
     def test_evalutes_qualnames(self):

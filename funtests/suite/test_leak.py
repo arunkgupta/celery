@@ -1,13 +1,10 @@
-from __future__ import print_function, unicode_literals
+from __future__ import absolute_import, print_function, unicode_literals
 
 import gc
 import os
 import sys
 import shlex
 import subprocess
-
-sys.path.insert(0, os.getcwd())
-sys.path.insert(0, os.path.join(os.getcwd(), os.pardir))
 
 from celery import current_app
 from celery.five import range
@@ -80,7 +77,7 @@ class LeakFunCase(unittest.TestCase):
             try:
                 assert self.appx(first) >= self.appx(after)
             except AssertionError:
-                print('BASE: {0!r} AVG: {1!r} SIZES: {2!r}'.format(
+                print('base: {0!r} avg: {1!r} sizes: {2!r}'.format(
                     base, sizes.average(), sizes))
                 raise
         finally:
@@ -126,6 +123,7 @@ class test_leaks(LeakFunCase):
             self.assertFreed(its, task2.delay)
         finally:
             self.app.conf.BROKER_POOL_LIMIT = pool_limit
+
 
 if __name__ == '__main__':
     unittest.main()

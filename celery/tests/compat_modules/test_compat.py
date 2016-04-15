@@ -1,9 +1,6 @@
-from __future__ import absolute_import
+from __future__ import absolute_import, unicode_literals
 
 from datetime import timedelta
-
-import sys
-sys.modules.pop('celery.task', None)
 
 from celery.schedules import schedule
 from celery.task import (
@@ -11,7 +8,7 @@ from celery.task import (
     PeriodicTask
 )
 
-from celery.tests.case import AppCase, depends_on_current_app
+from celery.tests.case import AppCase, depends_on_current_app  # noqa
 
 
 @depends_on_current_app
@@ -29,7 +26,7 @@ class test_periodic_tasks(AppCase):
 
     def test_must_have_run_every(self):
         with self.assertRaises(NotImplementedError):
-            type('Foo', (PeriodicTask, ), {'__module__': __name__})
+            type('Foo', (PeriodicTask,), {'__module__': __name__})
 
     def test_remaining_estimate(self):
         s = self.my_periodic.run_every

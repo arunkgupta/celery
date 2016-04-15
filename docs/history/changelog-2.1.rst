@@ -49,7 +49,7 @@ Fixes
 * worker: Now properly handles errors occurring while trying to acknowledge
   the message.
 
-* `TaskRequest.on_failure` now encodes traceback using the current filesystem
+* `TaskRequest.on_failure` now encodes traceback using the current file-system
    encoding.  (Issue #286).
 
 * `EagerResult` can now be pickled (Issue #288).
@@ -80,10 +80,10 @@ Documentation
 * `EventReceiver`: now sends heartbeat request to find workers.
 
     This means :program:`celeryev` and friends finds workers immediately
-    at startup.
+    at start-up.
 
-* celeryev cursesmon: Set screen_delay to 10ms, so the screen refreshes more
-  often.
+* ``celeryev`` curses monitor: Set screen_delay to 10ms, so the screen
+  refreshes more often.
 
 * Fixed pickling errors when pickling :class:`AsyncResult` on older Python
   versions.
@@ -108,7 +108,7 @@ Fixes
 * worker: Now honors ignore result for
   :exc:`~@WorkerLostError` and timeout errors.
 
-* celerybeat: Fixed :exc:`UnboundLocalError` in celerybeat logging
+* ``celerybeat``: Fixed :exc:`UnboundLocalError` in ``celerybeat`` logging
   when using logging setup signals.
 
 * worker: All log messages now includes `exc_info`.
@@ -127,7 +127,7 @@ Fixes
 
 * Now working on Windows again.
 
-   Removed dependency on the pwd/grp modules.
+   Removed dependency on the :mod:`pwd`/:mod:`grp` modules.
 
 * snapshots: Fixed race condition leading to loss of events.
 
@@ -161,12 +161,12 @@ Fixes
     positional arguments in the future, so please do not depend on this
     behavior.
 
-* celerybeat: Now respects routers and task execution options again.
+* ``celerybeat``: Now respects routers and task execution options again.
 
-* celerybeat: Now reuses the publisher instead of the connection.
+* ``celerybeat``: Now reuses the publisher instead of the connection.
 
 * Cache result backend: Using :class:`float` as the expires argument
-  to `cache.set` is deprecated by the memcached libraries,
+  to `cache.set` is deprecated by the Memcached libraries,
   so we now automatically cast to :class:`int`.
 
 * unit tests: No longer emits logging and warnings in test output.
@@ -197,14 +197,14 @@ News
 
     .. code-block:: python
 
-        CELERYBEAT_SCHEDULER = "djcelery.schedulers.DatabaseScheduler"
+        CELERYBEAT_SCHEDULER = 'djcelery.schedulers.DatabaseScheduler'
 
 * Added Task.expires: Used to set default expiry time for tasks.
 
 * New remote control commands: `add_consumer` and `cancel_consumer`.
 
     .. method:: add_consumer(queue, exchange, exchange_type, routing_key,
-                             **options)
+                             \*\*options)
         :module:
 
         Tells the worker to declare and consume from the specified
@@ -220,10 +220,10 @@ News
     :class:`~celery.task.control.inspect`.
 
 
-    Example using celeryctl to start consuming from queue "queue", in
+    Example using ``celeryctl`` to start consuming from queue "queue", in
     exchange "exchange", of type "direct" using binding key "key":
 
-    .. code-block:: bash
+    .. code-block:: console
 
         $ celeryctl inspect add_consumer queue exchange direct key
         $ celeryctl inspect cancel_consumer queue
@@ -234,24 +234,24 @@ News
 
     Another example using :class:`~celery.task.control.inspect`:
 
-    .. code-block:: python
+    .. code-block:: pycon
 
         >>> from celery.task.control import inspect
-        >>> inspect.add_consumer(queue="queue", exchange="exchange",
-        ...                      exchange_type="direct",
-        ...                      routing_key="key",
+        >>> inspect.add_consumer(queue='queue', exchange='exchange',
+        ...                      exchange_type='direct',
+        ...                      routing_key='key',
         ...                      durable=False,
         ...                      auto_delete=True)
 
-        >>> inspect.cancel_consumer("queue")
+        >>> inspect.cancel_consumer('queue')
 
-* celerybeat: Now logs the traceback if a message can't be sent.
+* ``celerybeat``: Now logs the traceback if a message can't be sent.
 
-* celerybeat: Now enables a default socket timeout of 30 seconds.
+* ``celerybeat``: Now enables a default socket timeout of 30 seconds.
 
-* README/introduction/homepage: Added link to `Flask-Celery`_.
+* ``README``/introduction/homepage: Added link to `Flask-Celery`_.
 
-.. _`Flask-Celery`: http://github.com/ask/flask-celery
+.. _`Flask-Celery`: https://github.com/ask/flask-celery
 
 .. _version-2.1.0:
 
@@ -278,8 +278,8 @@ Important Notes
 * No longer depends on SQLAlchemy, this needs to be installed separately
   if the database result backend is used.
 
-* django-celery now comes with a monitor for the Django Admin interface.
-  This can also be used if you're not a Django user.
+* :pypi:`django-celery` now comes with a monitor for the Django Admin
+  interface.  This can also be used if you're not a Django user.
   (Update: Django-Admin monitor has been replaced with Flower, see the
   Monitoring guide).
 
@@ -296,7 +296,7 @@ Important Notes
     To do this use :program:`python` to find the location
     of this module:
 
-    .. code-block:: bash
+    .. code-block:: console
 
         $ python
         >>> import celery.platform
@@ -306,7 +306,7 @@ Important Notes
     Here the compiled module is in :file:`/opt/devel/celery/celery/`,
     to remove the offending files do:
 
-    .. code-block:: bash
+    .. code-block:: console
 
         $ rm -f /opt/devel/celery/celery/platform.py*
 
@@ -325,7 +325,7 @@ News
         CELERY_AMQP_TASK_RESULT_EXPIRES = 30 * 60  # 30 minutes.
         CELERY_AMQP_TASK_RESULT_EXPIRES = 0.80     # 800 ms.
 
-* celeryev: Event Snapshots
+* ``celeryev``: Event Snapshots
 
     If enabled, the worker sends messages about what the worker is doing.
     These messages are called "events".
@@ -336,8 +336,8 @@ News
     This can then be stored in a database to generate statistics
     with, or even monitoring over longer time periods.
 
-    django-celery now comes with a Celery monitor for the Django
-    Admin interface. To use this you need to run the django-celery
+    :pypi:`django-celery` now comes with a Celery monitor for the Django
+    Admin interface. To use this you need to run the :pypi:`django-celery`
     snapshot camera, which stores snapshots to the database at configurable
     intervals.
 
@@ -345,13 +345,13 @@ News
 
     1. Create the new database tables:
 
-        .. code-block:: bash
+        .. code-block:: console
 
             $ python manage.py syncdb
 
-    2. Start the django-celery snapshot camera:
+    2. Start the :pypi:`django-celery` snapshot camera:
 
-        .. code-block:: bash
+        .. code-block:: console
 
             $ python manage.py celerycam
 
@@ -364,17 +364,17 @@ News
     There's also a Debian init.d script for :mod:`~celery.bin.events` available,
     see :ref:`daemonizing` for more information.
 
-    New command-line arguments to celeryev:
+    New command-line arguments to ``celeryev``:
 
-        * :option:`-c|--camera`: Snapshot camera class to use.
-        * :option:`--logfile|-f`: Log file
-        * :option:`--loglevel|-l`: Log level
-        * :option:`--maxrate|-r`: Shutter rate limit.
-        * :option:`--freq|-F`: Shutter frequency
+        * :option:`celery events --camera`: Snapshot camera class to use.
+        * :option:`celery events --logfile`: Log file
+        * :option:`celery events --loglevel`: Log level
+        * :option:`celery events --maxrate`: Shutter rate limit.
+        * :option:`celery events --freq`: Shutter frequency
 
-    The :option:`--camera` argument is the name of a class used to take
-    snapshots with. It must support the interface defined by
-    :class:`celery.events.snapshot.Polaroid`.
+    The :option:`--camera <celery events --camera>` argument is the name
+    of a class used to take snapshots with. It must support the interface
+    defined by :class:`celery.events.snapshot.Polaroid`.
 
     Shutter frequency controls how often the camera thread wakes up,
     while the rate limit controls how often it will actually take
@@ -389,12 +389,12 @@ News
     anything new.
 
     The rate limit is off by default, which means it will take a snapshot
-    for every :option:`--frequency` seconds.
+    for every :option:`--frequency <celery events --frequency>` seconds.
 
 * :func:`~celery.task.control.broadcast`: Added callback argument, this can be
   used to process replies immediately as they arrive.
 
-* celeryctl: New command line utility to manage and inspect worker nodes,
+* ``celeryctl``: New command line utility to manage and inspect worker nodes,
   apply tasks and inspect the results of tasks.
 
     .. seealso::
@@ -403,7 +403,7 @@ News
 
     Some examples:
 
-    .. code-block:: bash
+    .. code-block:: console
 
         $ celeryctl apply tasks.add -a '[2, 2]' --countdown=10
 
@@ -436,13 +436,13 @@ News
     =====================================  =====================================
     **Application**                        **Logger Name**
     =====================================  =====================================
-    `celeryd`                              "celery"
-    `celerybeat`                           "celery.beat"
-    `celeryev`                             "celery.ev"
+    ``celeryd``                            ``"celery"``
+    ``celerybeat``                         ``"celery.beat"``
+    ``celeryev``                           ``"celery.ev"``
     =====================================  =====================================
 
     This means that the `loglevel` and `logfile` arguments will
-    affect all registered loggers (even those from 3rd party libraries).
+    affect all registered loggers (even those from third-party libraries).
     Unless you configure the loggers manually as shown below, that is.
 
     *Users can choose to configure logging by subscribing to the
@@ -455,15 +455,17 @@ News
 
         @signals.setup_logging.connect
         def setup_logging(**kwargs):
-            fileConfig("logging.conf")
+            fileConfig('logging.conf')
 
     If there are no receivers for this signal, the logging subsystem
-    will be configured using the :option:`--loglevel`/:option:`--logfile`
-    argument, this will be used for *all defined loggers*.
+    will be configured using the
+    :option:`--loglevel <celery worker --loglevel>`/
+    :option:`--logfile <celery worker --logfile>`
+    arguments, this will be used for *all defined loggers*.
 
     Remember that the worker also redirects stdout and stderr
     to the celery logger, if manually configure logging
-    you also need to redirect the stdouts manually:
+    you also need to redirect the standard outs manually:
 
     .. code-block:: python
 
@@ -472,17 +474,18 @@ News
 
        def setup_logging(**kwargs):
             import logging
-            fileConfig("logging.conf")
-            stdouts = logging.getLogger("mystdoutslogger")
+            fileConfig('logging.conf')
+            stdouts = logging.getLogger('mystdoutslogger')
             log.redirect_stdouts_to_logger(stdouts, loglevel=logging.WARNING)
 
-* worker Added command line option :option:`-I`/:option:`--include`:
+* worker Added command line option
+  :option:`--include <celery worker --include>`:
 
     A comma separated list of (task) modules to be imported.
 
     Example:
 
-    .. code-block:: bash
+    .. code-block:: console
 
         $ celeryd -I app1.tasks,app2.tasks
 
@@ -494,7 +497,7 @@ News
 * worker: Now uses `multiprocessing.freeze_support()` so that it should work
   with **py2exe**, **PyInstaller**, **cx_Freeze**, etc.
 
-* worker: Now includes more metadata for the :state:`STARTED` state: PID and
+* worker: Now includes more meta-data for the :state:`STARTED` state: PID and
   host name of the worker that started the task.
 
     See issue #181
@@ -504,11 +507,11 @@ News
 
     e.g.:
 
-        >>> s = subtask((1, 2), {"foo": "bar"}, baz=1)
+        >>> s = subtask((1, 2), {'foo': 'bar'}, baz=1)
         >>> s.args
         (1, 2)
         >>> s.kwargs
-        {"foo": "bar", "baz": 1}
+        {'foo': 'bar', 'baz': 1}
 
     See issue #182.
 
@@ -534,7 +537,7 @@ News
 * Added `Task.store_errors_even_if_ignored`, so it can be changed per Task,
   not just by the global setting.
 
-* The crontab scheduler no longer wakes up every second, but implements
+* The Crontab scheduler no longer wakes up every second, but implements
   `remaining_estimate` (*Optimization*).
 
 * worker:  Store :state:`FAILURE` result if the
@@ -554,7 +557,7 @@ News
       backend cleanup task can be easily changed.
 
     * The task is now run every day at 4:00 AM, rather than every day since
-      the first time it was run (using crontab schedule instead of
+      the first time it was run (using Crontab schedule instead of
       `run_every`)
 
     * Renamed `celery.task.builtins.DeleteExpiredTaskMetaTask`
@@ -565,8 +568,8 @@ News
 
     See issue #134.
 
-* Implemented `AsyncResult.forget` for sqla/cache/redis/tyrant backends.
-  (Forget and remove task result).
+* Implemented `AsyncResult.forget` for SQLAlchemy/Memcached/Redis/Tokyo Tyrant
+  backends.  (Forget and remove task result).
 
     See issue #184.
 
@@ -609,7 +612,7 @@ News
 
     See issue #164.
 
-* timedelta_seconds: Use `timedelta.total_seconds` if running on Python 2.7
+* ``timedelta_seconds``: Use ``timedelta.total_seconds`` if running on Python 2.7
 
 * :class:`~celery.datastructures.TokenBucket`: Generic Token Bucket algorithm
 
@@ -692,7 +695,7 @@ Experimental
 
     multi can now be used to start, stop and restart worker nodes:
 
-    .. code-block:: bash
+    .. code-block:: console
 
         $ celeryd-multi start jerry elaine george kramer
 
@@ -701,7 +704,7 @@ Experimental
     use the `--pidfile` and `--logfile` arguments with the `%n`
     format:
 
-    .. code-block:: bash
+    .. code-block:: console
 
         $ celeryd-multi start jerry elaine george kramer \
                         --logfile=/var/log/celeryd@%n.log \
@@ -709,20 +712,20 @@ Experimental
 
     Stopping:
 
-    .. code-block:: bash
+    .. code-block:: console
 
         $ celeryd-multi stop jerry elaine george kramer
 
     Restarting. The nodes will be restarted one by one as the old ones
     are shutdown:
 
-    .. code-block:: bash
+    .. code-block:: console
 
         $ celeryd-multi restart jerry elaine george kramer
 
     Killing the nodes (**WARNING**: Will discard currently executing tasks):
 
-    .. code-block:: bash
+    .. code-block:: console
 
         $ celeryd-multi kill jerry elaine george kramer
 
@@ -740,7 +743,7 @@ Experimental
 
 * Added generic init.d script using `celeryd-multi`
 
-    http://github.com/celery/celery/tree/master/extra/generic-init.d/celeryd
+    https://github.com/celery/celery/tree/master/extra/generic-init.d/celeryd
 
 .. _v210-documentation:
 

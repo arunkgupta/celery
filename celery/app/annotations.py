@@ -1,16 +1,16 @@
 # -*- coding: utf-8 -*-
 """
-    celery.app.annotations
-    ~~~~~~~~~~~~~~~~~~~~~~
+    ``celery.app.annotations``
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-    Annotations is a nice term for moneky patching
+    Annotations is a nice term for monkey-patching
     task classes in the configuration.
 
     This prepares and performs the annotations in the
-    :setting:`CELERY_ANNOTATIONS` setting.
+    :setting:`task_annotations` setting.
 
 """
-from __future__ import absolute_import
+from __future__ import absolute_import, unicode_literals
 
 from celery.five import string_t
 from celery.utils.functional import firstmethod, mlazy
@@ -38,7 +38,7 @@ class MapAnnotation(dict):
 
 
 def prepare(annotations):
-    """Expands the :setting:`CELERY_ANNOTATIONS` setting."""
+    """Expands the :setting:`task_annotations` setting."""
 
     def expand_annotation(annotation):
         if isinstance(annotation, dict):
@@ -50,7 +50,7 @@ def prepare(annotations):
     if annotations is None:
         return ()
     elif not isinstance(annotations, (list, tuple)):
-        annotations = (annotations, )
+        annotations = (annotations,)
     return [expand_annotation(anno) for anno in annotations]
 
 

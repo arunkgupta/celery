@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
 """
-    celery.backends.cache
-    ~~~~~~~~~~~~~~~~~~~~~
+    ``celery.backends.cache``
+    ~~~~~~~~~~~~~~~~~~~~~~~~~
 
-    Memcache and in-memory cache result backend.
+    Memcached and in-memory cache result backend.
 
 """
-from __future__ import absolute_import
+from __future__ import absolute_import, unicode_literals
 
 import sys
 
@@ -25,7 +25,7 @@ _imp = [None]
 PY3 = sys.version_info[0] == 3
 
 REQUIRES_BACKEND = """\
-The memcached backend requires either pylibmc or python-memcached.\
+The Memcached backend requires either pylibmc or python-memcached.\
 """
 
 UNKNOWN_BACKEND = """\
@@ -45,7 +45,7 @@ def import_best_memcache():
                 import memcache  # noqa
             except ImportError:
                 raise ImproperlyConfigured(REQUIRES_BACKEND)
-        if PY3:
+        if PY3:  # pragma: no cover
             memcache_key_t = bytes_to_str
         _imp[0] = (is_pylibmc, memcache, memcache_key_t)
     return _imp[0]
@@ -100,11 +100,12 @@ class CacheBackend(KeyValueStoreBackend):
     def __init__(self, app, expires=None, backend=None,
                  options={}, url=None, **kwargs):
         super(CacheBackend, self).__init__(app, **kwargs)
+        self.url = url
 
-        self.options = dict(self.app.conf.CELERY_CACHE_BACKEND_OPTIONS,
+        self.options = dict(self.app.conf.cache_backend_options,
                             **options)
 
-        self.backend = url or backend or self.app.conf.CELERY_CACHE_BACKEND
+        self.backend = url or backend or self.app.conf.cache_backend
         if self.backend:
             self.backend, _, servers = self.backend.partition('://')
             self.servers = servers.rstrip('/').split(';')
@@ -129,7 +130,7 @@ class CacheBackend(KeyValueStoreBackend):
         return self.client.delete(key)
 
     def _apply_chord_incr(self, header, partial_args, group_id, body, **opts):
-        self.client.set(self.get_key_for_chord(group_id), '0', time=86400)
+        self.client.set(self.get_key_for_chord(group_id), 0, time=86400)
         return super(CacheBackend, self)._apply_chord_incr(
             header, partial_args, group_id, body, **opts
         )
@@ -149,3 +150,12 @@ class CacheBackend(KeyValueStoreBackend):
                  expires=self.expires,
                  options=self.options))
         return super(CacheBackend, self).__reduce__(args, kwargs)
+
+    def as_uri(self, *args, **kwargs):
+        """Return the backend as an URI.
+
+        This properly handles the case of multiple servers.
+
+        """
+        servers = ';'.join(self.servers)
+        return '{0}://{1}/'.format(self.backend, servers)

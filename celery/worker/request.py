@@ -10,12 +10,12 @@
 from __future__ import absolute_import, unicode_literals
 
 import logging
-import socket
 import sys
 
 from datetime import datetime
 from weakref import ref
 
+from billiard.common import TERM_SIGNAME
 from kombu.utils.encoding import safe_repr, safe_str
 
 from celery import signals
@@ -25,8 +25,9 @@ from celery.exceptions import (
     SoftTimeLimitExceeded, TimeLimitExceeded,
     WorkerLostError, Terminated, Retry, Reject,
 )
-from celery.five import string
+from celery.five import python_2_unicode_compatible, string
 from celery.platforms import signals as _signals
+from celery.utils import cached_property, gethostname
 from celery.utils.functional import noop
 from celery.utils.log import get_logger
 from celery.utils.timeutils import maybe_iso8601, timezone, maybe_make_aware
@@ -63,6 +64,7 @@ task_ready = state.task_ready
 revoked_tasks = state.revoked
 
 
+@python_2_unicode_compatible
 class Request(object):
     """A request for task execution."""
     acknowledged = False
@@ -76,10 +78,11 @@ class Request(object):
 
     if not IS_PYPY:  # pragma: no cover
         __slots__ = (
-            'app', 'name', 'id', 'on_ack', 'body',
-            'hostname', 'eventer', 'connection_errors', 'task', 'eta',
-            'expires', 'request_dict', 'on_reject', 'utc',
-            'content_type', 'content_encoding',
+            'app', 'type', 'name', 'id', 'root_id', 'parent_id',
+            'on_ack', 'body', 'hostname', 'eventer', 'connection_errors',
+            'task', 'eta', 'expires', 'request_dict', 'on_reject', 'utc',
+            'content_type', 'content_encoding', 'argsrepr', 'kwargsrepr',
+            '_decoded',
             '__weakref__', '__dict__',
         )
 
@@ -98,23 +101,30 @@ class Request(object):
         self.message = message
         self.body = body
         self.utc = utc
+        self._decoded = decoded
         if decoded:
             self.content_type = self.content_encoding = None
         else:
             self.content_type, self.content_encoding = (
                 message.content_type, message.content_encoding,
-                )
+            )
 
-        name = self.name = headers['task']
         self.id = headers['id']
+        type = self.type = self.name = headers['task']
+        self.root_id = headers.get('root_id')
+        self.parent_id = headers.get('parent_id')
+        if 'shadow' in headers:
+            self.name = headers['shadow'] or self.name
         if 'timelimit' in headers:
             self.time_limits = headers['timelimit']
+        self.argsrepr = headers.get('argsrepr', '')
+        self.kwargsrepr = headers.get('kwargsrepr', '')
         self.on_ack = on_ack
         self.on_reject = on_reject
-        self.hostname = hostname or socket.gethostname()
+        self.hostname = hostname or gethostname()
         self.eventer = eventer
         self.connection_errors = connection_errors or ()
-        self.task = task or self.app.tasks[name]
+        self.task = task or self.app.tasks[type]
 
         # timezone means the message is timezone-aware, and the only timezone
         # supported at this point is UTC.
@@ -148,7 +158,7 @@ class Request(object):
             'delivery_info': {
                 'exchange': delivery_info.get('exchange'),
                 'routing_key': delivery_info.get('routing_key'),
-                'priority': delivery_info.get('priority'),
+                'priority': properties.get('priority'),
                 'redelivered': delivery_info.get('redelivered'),
             }
 
@@ -178,7 +188,7 @@ class Request(object):
         soft_time_limit = soft_time_limit or task.soft_time_limit
         result = pool.apply_async(
             trace_task_ret,
-            args=(self.name, task_id, self.request_dict, self.body,
+            args=(self.type, task_id, self.request_dict, self.body,
                   self.content_type, self.content_encoding),
             accept_callback=self.on_accepted,
             timeout_callback=self.on_timeout,
@@ -207,7 +217,7 @@ class Request(object):
             self.acknowledge()
 
         request = self.request_dict
-        args, kwargs, embed = self.message.payload
+        args, kwargs, embed = self._payload
         request.update({'loglevel': loglevel, 'logfile': logfile,
                         'hostname': self.hostname, 'is_eager': False,
                         'args': args, 'kwargs': kwargs}, **embed or {})
@@ -226,7 +236,7 @@ class Request(object):
                 return True
 
     def terminate(self, pool, signal=None):
-        signal = _signals.signum(signal or 'TERM')
+        signal = _signals.signum(signal or TERM_SIGNAME)
         if self.time_start:
             pool.terminate_job(self.worker_pid, signal)
             self._announce_revoked('terminated', True, signal, False)
@@ -241,8 +251,9 @@ class Request(object):
         task_ready(self)
         self.send_event('task-revoked',
                         terminated=terminated, signum=signum, expired=expired)
-        if self.store_errors:
-            self.task.backend.mark_as_revoked(self.id, reason, request=self)
+        self.task.backend.mark_as_revoked(
+            self.id, reason, request=self, store_result=self.store_errors,
+        )
         self.acknowledge()
         self._already_revoked = True
         send_revoked(self.task, request=self,
@@ -285,15 +296,16 @@ class Request(object):
         task_ready(self)
         if soft:
             warn('Soft time limit (%ss) exceeded for %s[%s]',
-                 timeout, self.name, self.id)
-            exc = SoftTimeLimitExceeded(timeout)
+                 soft, self.name, self.id)
+            exc = SoftTimeLimitExceeded(soft)
         else:
             error('Hard time limit (%ss) exceeded for %s[%s]',
                   timeout, self.name, self.id)
             exc = TimeLimitExceeded(timeout)
 
-        if self.store_errors:
-            self.task.backend.mark_as_failure(self.id, exc, request=self)
+        self.task.backend.mark_as_failure(
+            self.id, exc, request=self, store_result=self.store_errors,
+        )
 
         if self.task.acks_late:
             self.acknowledge()
@@ -310,10 +322,7 @@ class Request(object):
         if self.task.acks_late:
             self.acknowledge()
 
-        if self.eventer and self.eventer.enabled:
-            self.send_event(
-                'task-succeeded', result=retval, runtime=runtime,
-            )
+        self.send_event('task-succeeded', result=retval, runtime=runtime)
 
     def on_retry(self, exc_info):
         """Handler called if the task should be retried."""
@@ -327,9 +336,8 @@ class Request(object):
     def on_failure(self, exc_info, send_failed_event=True, return_ok=False):
         """Handler called if the task raised an exception."""
         task_ready(self)
-
         if isinstance(exc_info.exception, MemoryError):
-            raise MemoryError('Process got: %s' % (exc_info.exception, ))
+            raise MemoryError('Process got: %s' % (exc_info.exception,))
         elif isinstance(exc_info.exception, Reject):
             return self.reject(requeue=exc_info.exception.requeue)
         elif isinstance(exc_info.exception, Ignore):
@@ -342,18 +350,26 @@ class Request(object):
 
         # These are special cases where the process would not have had
         # time to write the result.
-        if self.store_errors:
-            if isinstance(exc, Terminated):
-                self._announce_revoked(
-                    'terminated', True, string(exc), False)
-                send_failed_event = False  # already sent revoked event
-            elif isinstance(exc, WorkerLostError) or not return_ok:
-                self.task.backend.mark_as_failure(
-                    self.id, exc, request=self,
-                )
+        if isinstance(exc, Terminated):
+            self._announce_revoked(
+                'terminated', True, string(exc), False)
+            send_failed_event = False  # already sent revoked event
+        elif isinstance(exc, WorkerLostError) or not return_ok:
+            self.task.backend.mark_as_failure(
+                self.id, exc, request=self, store_result=self.store_errors,
+            )
         # (acks_late) acknowledge after result stored.
         if self.task.acks_late:
-            self.acknowledge()
+            requeue = self.delivery_info.get('redelivered', None) is False
+            reject = (
+                self.task.reject_on_worker_lost and
+                isinstance(exc, WorkerLostError)
+            )
+            if reject:
+                self.reject(requeue=requeue)
+                send_failed_event = False
+            else:
+                self.acknowledge()
 
         if send_failed_event:
             self.send_event(
@@ -376,38 +392,50 @@ class Request(object):
         if not self.acknowledged:
             self.on_reject(logger, self.connection_errors, requeue)
             self.acknowledged = True
+            self.send_event('task-rejected', requeue=requeue)
 
     def info(self, safe=False):
-        return {'id': self.id,
-                'name': self.name,
-                'body': self.body,
-                'hostname': self.hostname,
-                'time_start': self.time_start,
-                'acknowledged': self.acknowledged,
-                'delivery_info': self.delivery_info,
-                'worker_pid': self.worker_pid}
+        return {
+            'id': self.id,
+            'name': self.name,
+            'args': self.argsrepr,
+            'kwargs': self.kwargsrepr,
+            'type': self.type,
+            'body': self.body,
+            'hostname': self.hostname,
+            'time_start': self.time_start,
+            'acknowledged': self.acknowledged,
+            'delivery_info': self.delivery_info,
+            'worker_pid': self.worker_pid,
+        }
 
     def __str__(self):
-        return '{0.name}[{0.id}]{1}{2}'.format(
-            self,
+        return ' '.join([
+            self.humaninfo(),
             ' eta:[{0}]'.format(self.eta) if self.eta else '',
             ' expires:[{0}]'.format(self.expires) if self.expires else '',
-        )
+        ])
     shortinfo = __str__
 
+    def humaninfo(self):
+        return '{0.name}[{0.id}]'.format(self)
+
     def __repr__(self):
-        return '<{0} {1}: {2}>'.format(type(self).__name__, self.id, self.name)
+        return '<{0}: {1} {2} {3}>'.format(
+            type(self).__name__, self.humaninfo(),
+            self.argsrepr, self.kwargsrepr,
+        )
 
     @property
     def tzlocal(self):
         if self._tzlocal is None:
-            self._tzlocal = self.app.conf.CELERY_TIMEZONE
+            self._tzlocal = self.app.conf.timezone
         return self._tzlocal
 
     @property
     def store_errors(self):
-        return (not self.task.ignore_result
-                or self.task.store_errors_even_if_ignored)
+        return (not self.task.ignore_result or
+                self.task.store_errors_even_if_ignored)
 
     @property
     def task_id(self):
@@ -437,6 +465,30 @@ class Request(object):
         # used similarly to reply_to
         return self.request_dict['correlation_id']
 
+    @cached_property
+    def _payload(self):
+        return self.body if self._decoded else self.message.payload
+
+    @cached_property
+    def chord(self):
+        # used by backend.mark_as_failure when failure is reported
+        # by parent process
+        _, _, embed = self._payload
+        return embed.get('chord')
+
+    @cached_property
+    def errbacks(self):
+        # used by backend.mark_as_failure when failure is reported
+        # by parent process
+        _, _, embed = self._payload
+        return embed.get('errbacks')
+
+    @cached_property
+    def group(self):
+        # used by backend.on_chord_part_return when failures reported
+        # by parent process
+        return self.request_dict['group']
+
 
 def create_request_cls(base, task, pool, hostname, eventer,
                        ref=ref, revoked_tasks=revoked_tasks,
@@ -460,7 +512,7 @@ def create_request_cls(base, task, pool, hostname, eventer,
             soft_time_limit = soft_time_limit or default_soft_time_limit
             result = apply_async(
                 trace,
-                args=(self.name, task_id, self.request_dict, self.body,
+                args=(self.type, task_id, self.request_dict, self.body,
                       self.content_type, self.content_encoding),
                 accept_callback=self.on_accepted,
                 timeout_callback=self.on_timeout,

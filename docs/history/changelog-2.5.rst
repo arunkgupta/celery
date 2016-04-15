@@ -24,7 +24,7 @@ If you're looking for versions prior to 2.5 you should visit our
 This is a dummy release performed for the following goals:
 
 - Protect against force upgrading to Kombu 2.2.0
-- Version parity with django-celery
+- Version parity with :pypi:`django-celery`
 
 .. _version-2.5.3:
 
@@ -33,16 +33,16 @@ This is a dummy release performed for the following goals:
 :release-date: 2012-04-16 07:00 P.M BST
 :release-by: Ask Solem
 
-* A bug causes messages to be sent with UTC timestamps even though
+* A bug causes messages to be sent with UTC time-stamps even though
   :setting:`CELERY_ENABLE_UTC` was not enabled (Issue #636).
 
-* celerybeat: No longer crashes if an entry's args is set to None
+* ``celerybeat``: No longer crashes if an entry's args is set to None
   (Issue #657).
 
-* Autoreload did not work if a module's ``__file__`` attribute
-  was set to the modules '.pyc' file.  (Issue #647).
+* Auto-reload did not work if a module's ``__file__`` attribute
+  was set to the modules ``.pyc`` file.  (Issue #647).
 
-* Fixes early 2.5 compatibility where __package__ does not exist
+* Fixes early 2.5 compatibility where ``__package__`` does not exist
   (Issue #638).
 
 .. _version-2.5.2:
@@ -76,7 +76,7 @@ News
 
         @task_sent.connect
         def on_task_sent(**kwargs):
-            print("sent task: %r" % (kwargs, ))
+            print('sent task: %r' % (kwargs,))
 
 - Invalid task messages are now rejected instead of acked.
 
@@ -94,15 +94,15 @@ News
 
     Example:
 
-    .. code-block:: python
+    .. code-block:: pycon
 
-        >>> s = add.subtask((5, ))
-        >>> new = s.clone(args=(10, ), countdown=5})
+        >>> s = add.subtask((5,))
+        >>> new = s.clone(args=(10,), countdown=5})
         >>> new.args
         (10, 5)
 
         >>> new.options
-        {"countdown": 5}
+        {'countdown': 5}
 
 - Chord callbacks are now triggered in eager mode.
 
@@ -121,7 +121,9 @@ Fixes
     a new line so that a partially written pidfile is detected as broken,
     as before doing:
 
-        echo -n "1" > celeryd.pid
+    .. code-block:: console
+
+        $ echo -n "1" > celeryd.pid
 
     would cause the worker to think that an existing instance was already
     running (init has pid 1 after all).
@@ -145,11 +147,11 @@ Fixes
     Like with the worker it is now possible to configure celery settings
     on the command-line for celery control|inspect
 
-    .. code-block:: bash
+    .. code-block:: console
 
         $ celery inspect -- broker.pool_limit=30
 
-- Version dependency for python-dateutil fixed to be strict.
+- Version dependency for :pypi:`python-dateutil` fixed to be strict.
 
     Fix contributed by Thomas Meson.
 
@@ -158,7 +160,7 @@ Fixes
 
     This fixes a bug where a custom __call__  may mysteriously disappear.
 
-- Autoreload's inotify support has been improved.
+- Auto-reload's ``inotify`` support has been improved.
 
     Contributed by Mher Movsisyan.
 
@@ -185,7 +187,7 @@ Fixes
 * Eventlet/Gevent: Another small typo caused the mediator to be started
   with eventlet/gevent, which would make the worker sometimes hang at shutdown.
 
-* Mulitprocessing: Fixed an error occurring if the pool was stopped
+* :mod:`multiprocessing`: Fixed an error occurring if the pool was stopped
   before it was properly started.
 
 * Proxy objects now redirects ``__doc__`` and ``__name__`` so ``help(obj)``
@@ -194,8 +196,10 @@ Fixes
 * Internal timer (timer2) now logs exceptions instead of swallowing them
   (Issue #626).
 
-* celery shell: can now be started with :option:`--eventlet` or
-  :option:`--gevent` options to apply their monkey patches.
+* celery shell: can now be started with
+  :option:`--eventlet <celery shell --eventlet>` or
+  :option:`--gevent <celery shell --gevent>` options to apply their
+  monkey patches.
 
 .. _version-2.5.0:
 

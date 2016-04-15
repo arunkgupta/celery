@@ -20,7 +20,7 @@ For the CouchDB support you have to install additional dependencies.
 You can install both Celery and these dependencies in one go using
 the ``celery[couchdb]`` :ref:`bundle <bundles>`:
 
-.. code-block:: bash
+.. code-block:: console
 
     $ pip install -U celery[couchdb]
 
@@ -30,16 +30,20 @@ Configuration
 =============
 
 Configuration is easy, set the transport, and configure the location of
-your CouchDB database::
+your CouchDB database:
 
-    BROKER_URL = 'couchdb://localhost:5984/database_name'
+.. code-block:: python
 
-Where the URL is in the format of::
+    broker_url = 'couchdb://localhost:5984/database_name'
+
+Where the URL is in the format of:
+
+.. code-block:: text
 
     couchdb://userid:password@hostname:port/database_name
 
 The host name will default to ``localhost`` and the port to 5984,
-and so they are optional.  userid and password are also optional,
+and so they are optional.  ``userid`` and ``password`` are also optional,
 but needed if your CouchDB server requires authentication.
 
 .. _couchdb-results-configuration:

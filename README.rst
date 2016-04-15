@@ -4,10 +4,12 @@
 
 .. image:: http://cloud.github.com/downloads/celery/celery/celery_128.png
 
-:Version: 3.2.0a1 (Cipater)
+|build-status| |coverage| |bitdeli|
+
+:Version: 4.0.0rc2 (0today8)
 :Web: http://celeryproject.org/
 :Download: http://pypi.python.org/pypi/celery/
-:Source: http://github.com/celery/celery/
+:Source: https://github.com/celery/celery/
 :Keywords: task queue, job queue, asynchronous, async, rabbitmq, amqp, redis,
   python, webhooks, queue, distributed
 
@@ -29,12 +31,14 @@ message on the queue, the broker then delivers the message to a worker.
 A Celery system can consist of multiple workers and brokers, giving way
 to high availability and horizontal scaling.
 
-Celery is a library written in Python, but the protocol can be implemented in
-any language.  So far there's RCelery_ for the Ruby programming language, and a
-`PHP client`, but language interoperability can also be achieved
-by using webhooks.
+Celery is written in Python, but the protocol can be implemented in any
+language.  In addition to Python there's node-celery_ for Node.js,
+and a `PHP client`_.
 
-.. _RCelery: https://github.com/leapfrogonline/rcelery
+Language interoperability can also be achieved
+by `using webhooks`_.
+
+.. _node-celery: https://github.com/mher/node-celery
 .. _`PHP client`: https://github.com/gjedeer/celery-php
 .. _`using webhooks`:
     http://docs.celeryproject.org/en/latest/userguide/remote-tasks.html
@@ -44,7 +48,7 @@ What do I need?
 
 Celery version 3.0 runs on,
 
-- Python (2.6, 2.7, 3.3, 3.4)
+- Python (2.7, 3.4, 3.5)
 - PyPy (1.8, 1.9)
 - Jython (2.5, 2.7).
 
@@ -139,7 +143,7 @@ It supports...
         - AMQP, Redis
         - memcached, MongoDB
         - SQLAlchemy, Django ORM
-        - Apache Cassandra, IronCache
+        - Apache Cassandra, IronCache, Elasticsearch
 
     - **Serialization**
 
@@ -183,7 +187,7 @@ development easier, and sometimes they add important hooks like closing
 database connections at ``fork``.
 
 .. _`Django`: http://djangoproject.com/
-.. _`Pylons`: http://pylonshq.com/
+.. _`Pylons`: http://pylonsproject.org/
 .. _`Flask`: http://flask.pocoo.org/
 .. _`web2py`: http://web2py.com/
 .. _`Bottle`: http://bottlepy.org/
@@ -193,7 +197,7 @@ database connections at ``fork``.
 .. _`celery-pylons`: http://pypi.python.org/pypi/celery-pylons
 .. _`web2py-celery`: http://code.google.com/p/web2py-celery/
 .. _`Tornado`: http://www.tornadoweb.org/
-.. _`tornado-celery`: http://github.com/mher/tornado-celery/
+.. _`tornado-celery`: https://github.com/mher/tornado-celery/
 
 .. _celery-documentation:
 
@@ -213,11 +217,13 @@ Installation
 You can install Celery either via the Python Package Index (PyPI)
 or from source.
 
-To install using `pip`,::
+To install using `pip`,:
+::
 
     $ pip install -U Celery
 
-To install using `easy_install`,::
+To install using `easy_install`,:
+::
 
     $ easy_install -U Celery
 
@@ -244,7 +250,7 @@ Serializers
 ~~~~~~~~~~~
 
 :celery[auth]:
-    for using the auth serializer.
+    for using the ``auth`` security serializer.
 
 :celery[msgpack]:
     for using the msgpack serializer.
@@ -280,17 +286,29 @@ Transports and Backends
 :celery[sqs]:
     for using Amazon SQS as a message transport (*experimental*).
 
+:celery[tblib]
+    for using the ``task_remote_tracebacks`` feature.
+
 :celery[memcache]:
-    for using memcached as a result backend.
+    for using memcached as a result backend (using pylibmc)
+
+:celery[pymemcache]:
+    for using memcached as a result backend (pure-python implementation).
 
 :celery[cassandra]:
-    for using Apache Cassandra as a result backend.
+    for using Apache Cassandra as a result backend with DataStax driver.
 
 :celery[couchdb]:
     for using CouchDB as a message transport (*experimental*).
 
 :celery[couchbase]:
-    for using CouchBase as a result backend.
+    for using Couchbase as a result backend.
+
+:celery[elasticsearch]
+    for using Elasticsearch as a result backend.
+
+:celery[riak]:
+    for using Riak as a result backend.
 
 :celery[beanstalk]:
     for using Beanstalk as a message transport (*experimental*).
@@ -319,7 +337,8 @@ Downloading and installing from source
 Download the latest version of Celery from
 http://pypi.python.org/pypi/celery/
 
-You can install it by doing the following,::
+You can install it by doing the following,:
+::
 
     $ tar xvfz celery-0.0.0.tar.gz
     $ cd celery-0.0.0
@@ -338,15 +357,17 @@ With pip
 ~~~~~~~~
 
 The Celery development version also requires the development
-versions of ``kombu``, ``amqp`` and ``billiard``.
+versions of ``kombu``, ``amqp``, ``billiard`` and ``vine``.
 
 You can install the latest snapshot of these using the following
-pip commands::
+pip commands:
+::
 
     $ pip install https://github.com/celery/celery/zipball/master#egg=celery
     $ pip install https://github.com/celery/billiard/zipball/master#egg=billiard
     $ pip install https://github.com/celery/py-amqp/zipball/master#egg=amqp
     $ pip install https://github.com/celery/kombu/zipball/master#egg=kombu
+    $ pip install https://github.com/celery/vine/zipball/master#egg=vine
 
 With git
 ~~~~~~~~
@@ -384,7 +405,7 @@ Bug tracker
 ===========
 
 If you have any suggestions, bug reports or annoyances please report them
-to our issue tracker at http://github.com/celery/celery/issues/
+to our issue tracker at https://github.com/celery/celery/issues/
 
 .. _wiki:
 
@@ -398,10 +419,10 @@ http://wiki.github.com/celery/celery/
 Contributing
 ============
 
-Development of `celery` happens at Github: http://github.com/celery/celery
+Development of `celery` happens at GitHub: https://github.com/celery/celery
 
 You are highly encouraged to participate in the development
-of `celery`. If you don't like Github (for some reason) you're welcome
+of `celery`. If you don't like GitHub (for some reason) you're welcome
 to send regular patches.
 
 Be sure to also read the `Contributing to Celery`_ section in the
@@ -420,8 +441,14 @@ file in the top distribution directory for the full license text.
 
 .. # vim: syntax=rst expandtab tabstop=4 shiftwidth=4 shiftround
 
+.. |build-status| image:: https://secure.travis-ci.org/celery/celery.png?branch=master
+    :alt: Build status
+    :target: https://travis-ci.org/celery/celery
 
-.. image:: https://d2weczhvl823v0.cloudfront.net/celery/celery/trend.png
+.. |coverage| image:: https://codecov.io/github/celery/celery/coverage.svg?branch=master
+    :target: https://codecov.io/github/celery/celery?branch=master
+
+.. |bitdeli| image:: https://d2weczhvl823v0.cloudfront.net/celery/celery/trend.png
     :alt: Bitdeli badge
     :target: https://bitdeli.com/free
 

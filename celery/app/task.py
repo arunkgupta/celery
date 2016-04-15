@@ -6,7 +6,7 @@
     Task Implementation: Task request context, and the base task class.
 
 """
-from __future__ import absolute_import
+from __future__ import absolute_import, unicode_literals
 
 import sys
 
@@ -17,8 +17,9 @@ from celery import states
 from celery._state import _task_stack
 from celery.canvas import signature
 from celery.exceptions import Ignore, MaxRetriesExceededError, Reject, Retry
-from celery.five import class_property, items
+from celery.five import class_property, items, python_2_unicode_compatible
 from celery.result import EagerResult
+from celery.utils import abstract
 from celery.utils import uuid, maybe_reraise
 from celery.utils.functional import mattrgetter, maybe_list
 from celery.utils.imports import instantiate
@@ -43,7 +44,7 @@ R_UNBOUND_TASK = '<unbound {0.__name__}{flags}>'
 R_SELF_TASK = '<@task {0.name} bound to other {0.__self__}>'
 R_INSTANCE = '<@task: {0.name} of {app}{flags}>'
 
-#: Here for backwards compatibility as tasks no longer use a custom metaclass.
+#: Here for backwards compatibility as tasks no longer use a custom meta-class.
 TaskType = type
 
 
@@ -64,6 +65,7 @@ def _reprtask(task, fmt=None, flags=None):
     )
 
 
+@python_2_unicode_compatible
 class Context(object):
     # Default context
     logfile = None
@@ -85,11 +87,13 @@ class Context(object):
     taskset = None   # compat alias to group
     group = None
     chord = None
+    chain = None
     utc = None
     called_directly = True
     callbacks = None
     errbacks = None
     timelimit = None
+    origin = None
     _children = None   # see property
     _protected = 0
 
@@ -116,6 +120,7 @@ class Context(object):
         return self._children
 
 
+@python_2_unicode_compatible
 class Task(object):
     """Task base class.
 
@@ -142,9 +147,6 @@ class Task(object):
     #: Name of the task.
     name = None
 
-    #: If :const:`True` the task is an abstract base class.
-    abstract = True
-
     #: Maximum number of retries before giving up.  If set to :const:`None`,
     #: it will **never** stop retrying.
     max_retries = 3
@@ -159,7 +161,7 @@ class Task(object):
     rate_limit = None
 
     #: If enabled the worker will not store task state and return values
-    #: for this task.  Defaults to the :setting:`CELERY_IGNORE_RESULT`
+    #: for this task.  Defaults to the :setting:`task_ignore_result`
     #: setting.
     ignore_result = None
 
@@ -172,7 +174,7 @@ class Task(object):
     #: configured to ignore results.
     store_errors_even_if_ignored = None
 
-    #: If enabled an email will be sent to :setting:`ADMINS` whenever a task
+    #: If enabled an email will be sent to :setting:`admins` whenever a task
     #: of this type fails.
     send_error_emails = None
 
@@ -181,11 +183,11 @@ class Task(object):
     serializer = None
 
     #: Hard time limit.
-    #: Defaults to the :setting:`CELERYD_TASK_TIME_LIMIT` setting.
+    #: Defaults to the :setting:`task_time_limit` setting.
     time_limit = None
 
     #: Soft time limit.
-    #: Defaults to the :setting:`CELERYD_TASK_SOFT_TIME_LIMIT` setting.
+    #: Defaults to the :setting:`task_soft_time_limit` setting.
     soft_time_limit = None
 
     #: The result store backend used for this task.
@@ -195,7 +197,7 @@ class Task(object):
     autoregister = True
 
     #: If enabled the task will report its status as 'started' when the task
-    #: is executed by a worker.  Disabled by default as the normal behaviour
+    #: is executed by a worker.  Disabled by default as the normal behavior
     #: is to not report that level of granularity.  Tasks are either pending,
     #: finished, or waiting to be retried.
     #:
@@ -204,7 +206,7 @@ class Task(object):
     #: running.
     #:
     #: The application default can be overridden using the
-    #: :setting:`CELERY_TRACK_STARTED` setting.
+    #: :setting:`task_track_started` setting.
     track_started = None
 
     #: When enabled messages for this task will be acknowledged **after**
@@ -216,8 +218,20 @@ class Task(object):
     #: applications).
     #:
     #: The application default can be overridden with the
-    #: :setting:`CELERY_ACKS_LATE` setting.
+    #: :setting:`task_acks_late` setting.
     acks_late = None
+
+    #: Even if :attr:`acks_late` is enabled, the worker will
+    #: acknowledge tasks when the worker process executing them abruptly
+    #: exits or is signaled (e.g. :sig:`KILL`/:sig:`INT`, etc).
+    #:
+    #: Setting this to true allows the message to be re-queued instead,
+    #: so that the task will execute again by the same worker, or another
+    #: worker.
+    #:
+    #: Warning: Enabling this can cause message loops; make sure you know
+    #: what you're doing.
+    reject_on_worker_lost = None
 
     #: Tuple of expected exceptions.
     #:
@@ -230,31 +244,35 @@ class Task(object):
     #: Default task expiry time.
     expires = None
 
+    #: Max length of result representation used in logs and events.
+    resultrepr_maxsize = 1024
+
+    #: Task request stack, the current request will be the topmost.
+    request_stack = None
+
     #: Some may expect a request to exist even if the task has not been
     #: called.  This should probably be deprecated.
     _default_request = None
+
+    #: Deprecated attribute ``abstract`` here for compatibility.
+    abstract = True
 
     _exec_options = None
 
     __bound__ = False
 
     from_config = (
-        ('send_error_emails', 'CELERY_SEND_TASK_ERROR_EMAILS'),
-        ('serializer', 'CELERY_TASK_SERIALIZER'),
-        ('rate_limit', 'CELERY_DEFAULT_RATE_LIMIT'),
-        ('track_started', 'CELERY_TRACK_STARTED'),
-        ('acks_late', 'CELERY_ACKS_LATE'),
-        ('ignore_result', 'CELERY_IGNORE_RESULT'),
-        ('store_errors_even_if_ignored',
-            'CELERY_STORE_ERRORS_EVEN_IF_IGNORED'),
+        ('send_error_emails', 'task_send_error_emails'),
+        ('serializer', 'task_serializer'),
+        ('rate_limit', 'task_default_rate_limit'),
+        ('track_started', 'task_track_started'),
+        ('acks_late', 'task_acks_late'),
+        ('reject_on_worker_lost', 'task_reject_on_worker_lost'),
+        ('ignore_result', 'task_ignore_result'),
+        ('store_errors_even_if_ignored', 'task_store_errors_even_if_ignored'),
     )
 
-    #: ignored
-    accept_magic_kwargs = False
-
     _backend = None  # set by backend property.
-
-    __bound__ = False
 
     # - Tasks are lazily bound, so that configuration is not set
     # - until the task is actually used
@@ -319,7 +337,7 @@ class Task(object):
 
     def __call__(self, *args, **kwargs):
         _task_stack.push(self)
-        self.push_request()
+        self.push_request(args=args, kwargs=kwargs)
         try:
             # add self if this is a bound task
             if self.__self__ is not None:
@@ -360,7 +378,7 @@ class Task(object):
         return self.apply_async(args, kwargs)
 
     def apply_async(self, args=None, kwargs=None, task_id=None, producer=None,
-                    link=None, link_error=None, **options):
+                    link=None, link_error=None, shadow=None, **options):
         """Apply tasks asynchronously by sending a message.
 
         :keyword args: The positional arguments to pass on to the
@@ -384,17 +402,21 @@ class Task(object):
                           the task should expire.  The task will not be
                           executed after the expiration time.
 
+        :keyword shadow: Override task name used in logs/monitoring
+            (default from :meth:`shadow_name`).
+
         :keyword connection: Re-use existing broker connection instead
                              of establishing a new one.
 
         :keyword retry: If enabled sending of the task message will be retried
                         in the event of connection loss or failure.  Default
-                        is taken from the :setting:`CELERY_TASK_PUBLISH_RETRY`
-                        setting.  Note you need to handle the
+                        is taken from the :setting:`task_publish_retry`
+                        setting.  Note that you need to handle the
                         producer/connection manually for this to work.
 
         :keyword retry_policy:  Override the retry policy used.  See the
-                                :setting:`CELERY_TASK_PUBLISH_RETRY` setting.
+                                :setting:`task_publish_retry_policy`
+                                setting.
 
         :keyword routing_key: Custom routing key used to route the task to a
                               worker server. If in combination with a
@@ -402,8 +424,8 @@ class Task(object):
                               routing keys to topic exchanges.
 
         :keyword queue: The queue to route the task to.  This must be a key
-                        present in :setting:`CELERY_QUEUES`, or
-                        :setting:`CELERY_CREATE_MISSING_QUEUES` must be
+                        present in :setting:`task_queues`, or
+                        :setting:`task_create_missing_queues` must be
                         enabled.  See :ref:`guide-routing` for more
                         information.
 
@@ -425,7 +447,7 @@ class Task(object):
                               to use.  Can be one of ``zlib``, ``bzip2``,
                               or any custom compression methods registered with
                               :func:`kombu.compression.register`. Defaults to
-                              the :setting:`CELERY_MESSAGE_COMPRESSION`
+                              the :setting:`task_compression`
                               setting.
         :keyword link: A single, or a list of tasks to apply if the
                        task exits successfully.
@@ -433,41 +455,78 @@ class Task(object):
                       if an error occurs while executing the task.
 
         :keyword producer: :class:`kombu.Producer` instance to use.
+
         :keyword add_to_parent: If set to True (default) and the task
             is applied while executing another task, then the result
             will be appended to the parent tasks ``request.children``
             attribute.  Trailing can also be disabled by default using the
             :attr:`trail` attribute
+
         :keyword publisher: Deprecated alias to ``producer``.
+
+        :keyword headers: Message headers to be sent in the
+            task (a :class:`dict`)
+
+        :rtype :class:`celery.result.AsyncResult`: if
+            :setting:`task_always_eager` is not set, otherwise
+            :class:`celery.result.EagerResult`:
 
         Also supports all keyword arguments supported by
         :meth:`kombu.Producer.publish`.
 
         .. note::
-            If the :setting:`CELERY_ALWAYS_EAGER` setting is set, it will
+            If the :setting:`task_always_eager` setting is set, it will
             be replaced by a local :func:`apply` call instead.
 
         """
         try:
             check_arguments = self.__header__
-        except AttributeError:
+        except AttributeError:  # pragma: no cover
             pass
         else:
-            check_arguments(*args or (), **kwargs or {})
+            check_arguments(*(args or ()), **(kwargs or {}))
 
         app = self._get_app()
-        if app.conf.CELERY_ALWAYS_EAGER:
+        if app.conf.task_always_eager:
             return self.apply(args, kwargs, task_id=task_id or uuid(),
                               link=link, link_error=link_error, **options)
         # add 'self' if this is a "task_method".
         if self.__self__ is not None:
             args = args if isinstance(args, tuple) else tuple(args or ())
-            args = (self.__self__, ) + args
+            args = (self.__self__,) + args
+            shadow = shadow or self.shadow_name(args, kwargs, options)
+
+        preopts = self._get_exec_options()
+        options = dict(preopts, **options) if options else preopts
         return app.send_task(
             self.name, args, kwargs, task_id=task_id, producer=producer,
             link=link, link_error=link_error, result_cls=self.AsyncResult,
-            **dict(self._get_exec_options(), **options)
+            shadow=shadow,
+            **options
         )
+
+    def shadow_name(self, args, kwargs, options):
+        """Override for custom task name in worker logs/monitoring.
+
+        :param args: Task positional arguments.
+        :param kwargs: Task keyword arguments.
+        :param options: Task execution options.
+
+        **Example**:
+
+        .. code-block:: python
+
+            from celery.utils.imports import qualname
+
+            def shadow_name(task, args, kwargs, options):
+                return qualname(args[0])
+
+            @app.task(shadow_name=shadow_name, serializer='pickle')
+            def apply_function_async(fun, *args, **kwargs):
+                return fun(*args, **kwargs)
+
+        """
+        pass
 
     def signature_from_request(self, request=None, args=None, kwargs=None,
                                queue=None, **extra_options):
@@ -484,9 +543,10 @@ class Task(object):
             'soft_time_limit': limit_soft,
             'time_limit': limit_hard,
             'reply_to': request.reply_to,
+            'headers': request.headers,
         }
         options.update(
-            {'queue': queue} if queue else (request.delivery_info or {})
+            {'queue': queue} if queue else (request.delivery_info or {}),
         )
         return self.signature(
             args, kwargs, options, type=self, **extra_options
@@ -505,22 +565,24 @@ class Task(object):
 
             If this argument is set and retry is called while
             an exception was raised (``sys.exc_info()`` is set)
-            it will attempt to reraise the current exception.
+            it will attempt to re-raise the current exception.
 
             If no exception was raised it will raise the ``exc``
             argument provided.
         :keyword countdown: Time in seconds to delay the retry for.
         :keyword eta: Explicit time and date to run the retry at
                       (must be a :class:`~datetime.datetime` instance).
-        :keyword max_retries: If set, overrides the default retry limit.
-            A value of :const:`None`, means "use the default", so if you want
-            infinite retries you would have to set the :attr:`max_retries`
-            attribute of the task to :const:`None` first.
+        :keyword max_retries: If set, overrides the default retry limit for
+            this execution. Changes to this parameter do not propagate to
+            subsequent task retry attempts. A value of :const:`None`, means
+            "use the default", so if you want infinite retries you would
+            have to set the :attr:`max_retries` attribute of the task to
+            :const:`None` first.
         :keyword time_limit: If set, overrides the default time limit.
         :keyword soft_time_limit: If set, overrides the default soft
                                   time limit.
         :keyword \*\*options: Any extra options to pass on to
-                              meth:`apply_async`.
+                              :meth:`apply_async`.
         :keyword throw: If this is :const:`False`, do not raise the
                         :exc:`~@Retry` exception,
                         that tells the worker to mark the task as being
@@ -535,19 +597,19 @@ class Task(object):
 
         **Example**
 
-        .. code-block:: python
+        .. code-block:: pycon
 
             >>> from imaginary_twitter_lib import Twitter
             >>> from proj.celery import app
 
-            >>> @app.task()
-            ... def tweet(auth, message):
+            >>> @app.task(bind=True)
+            ... def tweet(self, auth, message):
             ...     twitter = Twitter(oauth=auth)
             ...     try:
             ...         twitter.post_status_update(message)
             ...     except twitter.FailWhale as exc:
             ...         # Retry in 5 minutes.
-            ...         raise tweet.retry(countdown=60 * 5, exc=exc)
+            ...         raise self.retry(countdown=60 * 5, exc=exc)
 
         Although the task will never return above as `retry` raises an
         exception to notify the worker, we use `raise` in front of the retry
@@ -576,7 +638,7 @@ class Task(object):
 
         if max_retries is not None and retries > max_retries:
             if exc:
-                # first try to reraise the original exception
+                # first try to re-raise the original exception
                 maybe_reraise()
                 # or if not in an except block then raise the custom exc.
                 raise exc
@@ -590,6 +652,8 @@ class Task(object):
             # if task was executed eagerly using apply(),
             # then the retry must also be executed eagerly.
             S.apply().get()
+            if throw:
+                raise ret
             return ret
 
         try:
@@ -607,7 +671,7 @@ class Task(object):
         :param args: positional arguments passed on to the task.
         :param kwargs: keyword arguments passed on to the task.
         :keyword throw: Re-raise task exceptions.  Defaults to
-                        the :setting:`CELERY_EAGER_PROPAGATES_EXCEPTIONS`
+                        the :setting:`task_eager_propagates`
                         setting.
 
         :rtype :class:`celery.result.EagerResult`:
@@ -620,12 +684,11 @@ class Task(object):
         args = args or ()
         # add 'self' if this is a bound method.
         if self.__self__ is not None:
-            args = (self.__self__, ) + tuple(args)
+            args = (self.__self__,) + tuple(args)
         kwargs = kwargs or {}
         task_id = options.get('task_id') or uuid()
         retries = options.get('retries', 0)
-        throw = app.either('CELERY_EAGER_PROPAGATES_EXCEPTIONS',
-                           options.pop('throw', None))
+        throw = app.either('task_eager_propagates', options.pop('throw', None))
 
         # Make sure we get the task instance, not class.
         task = app._tasks[self.name]
@@ -703,7 +766,7 @@ class Task(object):
         :param sig: :class:`@signature`
 
         Note: This will raise :exc:`~@Ignore`, so the best practice
-        is to always use ``raise self.replace_in_chord(...)`` to convey
+        is to always use ``raise self.replace(...)`` to convey
         to the reader that the task will not continue after being replaced.
 
         :param: Signature of new task.
@@ -729,8 +792,9 @@ class Task(object):
         :param lazy: If enabled the new task will not actually be called,
                       and ``sig.delay()`` must be called manually.
 
-        Currently only supported by the Redis result backend when
-        ``?new_join=1`` is enabled.
+        .. versionadded:: 4.0
+
+        Currently only supported by the Redis result backend.
 
         """
         if not self.request.chord:
@@ -747,7 +811,7 @@ class Task(object):
         :keyword task_id: Id of the task to update, defaults to the
                           id of the current task
         :keyword state: New state (:class:`str`).
-        :keyword meta: State metadata (:class:`dict`).
+        :keyword meta: State meta-data (:class:`dict`).
 
 
 
@@ -814,9 +878,8 @@ class Task(object):
         :param status: Current task state.
         :param retval: Task return value/exception.
         :param task_id: Unique id of the task.
-        :param args: Original arguments for the task that failed.
-        :param kwargs: Original keyword arguments for the task
-                       that failed.
+        :param args: Original arguments for the task.
+        :param kwargs: Original keyword arguments for the task.
 
         :keyword einfo: :class:`~billiard.einfo.ExceptionInfo`
                         instance, containing the traceback (if any).
@@ -877,4 +940,5 @@ class Task(object):
     @property
     def __name__(self):
         return self.__class__.__name__
+abstract.CallableTask.register(Task)
 BaseTask = Task  # compat alias

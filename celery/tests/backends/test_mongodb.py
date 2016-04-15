@@ -1,17 +1,19 @@
-from __future__ import absolute_import
+from __future__ import absolute_import, unicode_literals
 
 import datetime
 
 from pickle import loads, dumps
 
+from kombu.exceptions import EncodeError
+
 from celery import uuid
 from celery import states
 from celery.backends import mongodb as module
-from celery.backends.mongodb import MongoBackend, Bunch, pymongo
+from celery.backends.mongodb import InvalidDocument, MongoBackend
 from celery.exceptions import ImproperlyConfigured
 from celery.tests.case import (
-    AppCase, MagicMock, Mock, SkipTest, ANY,
-    depends_on_current_app, patch, sentinel,
+    ANY, AppCase, MagicMock, Mock,
+    mock, depends_on_current_app, patch, sentinel, skip,
 )
 
 COLLECTION = 'taskmeta_celery'
@@ -25,30 +27,34 @@ MONGODB_COLLECTION = 'collection1'
 MONGODB_GROUP_COLLECTION = 'group_collection1'
 
 
+@skip.unless_module('pymongo')
 class test_MongoBackend(AppCase):
 
-    def setup(self):
-        if pymongo is None:
-            raise SkipTest('pymongo is not installed.')
+    default_url = 'mongodb://uuuu:pwpw@hostname.dom/database'
+    replica_set_url = (
+        'mongodb://uuuu:pwpw@hostname.dom,'
+        'hostname.dom/database?replicaSet=rs'
+    )
+    sanitized_default_url = 'mongodb://uuuu:**@hostname.dom/database'
+    sanitized_replica_set_url = (
+        'mongodb://uuuu:**@hostname.dom/,'
+        'hostname.dom/database?replicaSet=rs'
+    )
 
+    def setup(self):
         R = self._reset = {}
         R['encode'], MongoBackend.encode = MongoBackend.encode, Mock()
         R['decode'], MongoBackend.decode = MongoBackend.decode, Mock()
         R['Binary'], module.Binary = module.Binary, Mock()
         R['datetime'], datetime.datetime = datetime.datetime, Mock()
 
-        self.backend = MongoBackend(app=self.app)
+        self.backend = MongoBackend(app=self.app, url=self.default_url)
 
     def teardown(self):
         MongoBackend.encode = self._reset['encode']
         MongoBackend.decode = self._reset['decode']
         module.Binary = self._reset['Binary']
         datetime.datetime = self._reset['datetime']
-
-    def test_Bunch(self):
-        x = Bunch(foo='foo', bar=2)
-        self.assertEqual(x.foo, 'foo')
-        self.assertEqual(x.bar, 2)
 
     def test_init_no_mongodb(self):
         prev, module.pymongo = module.pymongo, None
@@ -59,13 +65,71 @@ class test_MongoBackend(AppCase):
             module.pymongo = prev
 
     def test_init_no_settings(self):
-        self.app.conf.CELERY_MONGODB_BACKEND_SETTINGS = []
+        self.app.conf.mongodb_backend_settings = []
         with self.assertRaises(ImproperlyConfigured):
             MongoBackend(app=self.app)
 
     def test_init_settings_is_None(self):
-        self.app.conf.CELERY_MONGODB_BACKEND_SETTINGS = None
+        self.app.conf.mongodb_backend_settings = None
         MongoBackend(app=self.app)
+
+    def test_init_with_settings(self):
+        self.app.conf.mongodb_backend_settings = None
+        # empty settings
+        mb = MongoBackend(app=self.app)
+
+        # uri
+        uri = 'mongodb://localhost:27017'
+        mb = MongoBackend(app=self.app, url=uri)
+        self.assertEqual(mb.mongo_host, ['localhost:27017'])
+        self.assertEqual(mb.options, mb._prepare_client_options())
+        self.assertEqual(mb.database_name, 'celery')
+
+        # uri with database name
+        uri = 'mongodb://localhost:27017/celerydb'
+        mb = MongoBackend(app=self.app, url=uri)
+        self.assertEqual(mb.database_name, 'celerydb')
+
+        # uri with user, password, database name, replica set
+        uri = ('mongodb://'
+               'celeryuser:celerypassword@'
+               'mongo1.example.com:27017,'
+               'mongo2.example.com:27017,'
+               'mongo3.example.com:27017/'
+               'celerydatabase?replicaSet=rs0')
+        mb = MongoBackend(app=self.app, url=uri)
+        self.assertEqual(mb.mongo_host, ['mongo1.example.com:27017',
+                                         'mongo2.example.com:27017',
+                                         'mongo3.example.com:27017'])
+        self.assertEqual(
+            mb.options, dict(mb._prepare_client_options(), replicaset='rs0'),
+        )
+        self.assertEqual(mb.user, 'celeryuser')
+        self.assertEqual(mb.password, 'celerypassword')
+        self.assertEqual(mb.database_name, 'celerydatabase')
+
+        # same uri, change some parameters in backend settings
+        self.app.conf.mongodb_backend_settings = {
+            'replicaset': 'rs1',
+            'user': 'backenduser',
+            'database': 'another_db',
+            'options': {
+                'socketKeepAlive': True,
+            },
+        }
+        mb = MongoBackend(app=self.app, url=uri)
+        self.assertEqual(mb.mongo_host, ['mongo1.example.com:27017',
+                                         'mongo2.example.com:27017',
+                                         'mongo3.example.com:27017'])
+        self.assertEqual(
+            mb.options, dict(mb._prepare_client_options(),
+                             replicaset='rs1', socketKeepAlive=True),
+        )
+        self.assertEqual(mb.user, 'backenduser')
+        self.assertEqual(mb.password, 'celerypassword')
+        self.assertEqual(mb.database_name, 'another_db')
+
+        mb = MongoBackend(app=self.app, url='mongodb://')
 
     @depends_on_current_app
     def test_reduce(self):
@@ -73,17 +137,15 @@ class test_MongoBackend(AppCase):
         self.assertTrue(loads(dumps(x)))
 
     def test_get_connection_connection_exists(self):
-
         with patch('pymongo.MongoClient') as mock_Connection:
             self.backend._connection = sentinel._connection
 
             connection = self.backend._get_connection()
 
             self.assertEqual(sentinel._connection, connection)
-            self.assertFalse(mock_Connection.called)
+            mock_Connection.assert_not_called()
 
     def test_get_connection_no_connection_host(self):
-
         with patch('pymongo.MongoClient') as mock_Connection:
             self.backend._connection = None
             self.backend.host = MONGODB_HOST
@@ -92,12 +154,12 @@ class test_MongoBackend(AppCase):
 
             connection = self.backend._get_connection()
             mock_Connection.assert_called_once_with(
-                host='mongodb://localhost:27017', max_pool_size=10,
-                auto_start_request=False)
+                host='mongodb://localhost:27017',
+                **self.backend._prepare_client_options()
+            )
             self.assertEqual(sentinel.connection, connection)
 
     def test_get_connection_no_connection_mongodb_uri(self):
-
         with patch('pymongo.MongoClient') as mock_Connection:
             mongodb_uri = 'mongodb://%s:%d' % (MONGODB_HOST, MONGODB_PORT)
             self.backend._connection = None
@@ -107,8 +169,8 @@ class test_MongoBackend(AppCase):
 
             connection = self.backend._get_connection()
             mock_Connection.assert_called_once_with(
-                host=mongodb_uri, max_pool_size=10,
-                auto_start_request=False)
+                host=mongodb_uri, **self.backend._prepare_client_options()
+            )
             self.assertEqual(sentinel.connection, connection)
 
     @patch('celery.backends.mongodb.MongoBackend._get_connection')
@@ -143,17 +205,8 @@ class test_MongoBackend(AppCase):
         database = self.backend.database
 
         self.assertTrue(database is mock_database)
-        self.assertFalse(mock_database.authenticate.called)
+        mock_database.authenticate.assert_not_called()
         self.assertTrue(self.backend.__dict__['database'] is mock_database)
-
-    def test_process_cleanup(self):
-        self.backend._connection = None
-        self.backend.process_cleanup()
-        self.assertEqual(self.backend._connection, None)
-
-        self.backend._connection = 'not none'
-        self.backend.process_cleanup()
-        self.assertEqual(self.backend._connection, None)
 
     @patch('celery.backends.mongodb.MongoBackend._get_database')
     def test_store_result(self, mock_get_database):
@@ -172,6 +225,11 @@ class test_MongoBackend(AppCase):
         mock_database.__getitem__.assert_called_once_with(MONGODB_COLLECTION)
         mock_collection.save.assert_called_once_with(ANY)
         self.assertEqual(sentinel.result, ret_val)
+
+        mock_collection.save.side_effect = InvalidDocument()
+        with self.assertRaises(EncodeError):
+            self.backend._store_result(
+                sentinel.task_id, sentinel.result, sentinel.status)
 
     @patch('celery.backends.mongodb.MongoBackend._get_database')
     def test_get_task_meta_for(self, mock_get_database):
@@ -253,10 +311,13 @@ class test_MongoBackend(AppCase):
         mock_get_database.assert_called_once_with()
         mock_collection.find_one.assert_called_once_with(
             {'_id': sentinel.taskset_id})
-        self.assertEqual(
-            list(sorted(['date_done', 'result', 'task_id'])),
-            list(sorted(ret_val.keys())),
+        self.assertItemsEqual(
+            ['date_done', 'result', 'task_id'],
+            list(ret_val.keys()),
         )
+
+        mock_collection.find_one.return_value = None
+        self.backend._restore_group(sentinel.taskset_id)
 
     @patch('celery.backends.mongodb.MongoBackend._get_database')
     def test_delete_group(self, mock_get_database):
@@ -310,7 +371,7 @@ class test_MongoBackend(AppCase):
         self.backend.cleanup()
 
         mock_get_database.assert_called_once_with()
-        self.assertTrue(mock_collection.remove.called)
+        mock_collection.remove.assert_called()
 
     def test_get_database_authfailure(self):
         x = MongoBackend(app=self.app)
@@ -323,3 +384,53 @@ class test_MongoBackend(AppCase):
         with self.assertRaises(ImproperlyConfigured):
             x._get_database()
         db.authenticate.assert_called_with('jerry', 'cere4l')
+
+    def test_prepare_client_options(self):
+        with patch('pymongo.version_tuple', new=(3, 0, 3)):
+            options = self.backend._prepare_client_options()
+            self.assertDictEqual(options, {
+                'maxPoolSize': self.backend.max_pool_size
+            })
+
+    def test_as_uri_include_password(self):
+        self.assertEqual(self.backend.as_uri(True), self.default_url)
+
+    def test_as_uri_exclude_password(self):
+        self.assertEqual(self.backend.as_uri(), self.sanitized_default_url)
+
+    def test_as_uri_include_password_replica_set(self):
+        backend = MongoBackend(app=self.app, url=self.replica_set_url)
+        self.assertEqual(backend.as_uri(True), self.replica_set_url)
+
+    def test_as_uri_exclude_password_replica_set(self):
+        backend = MongoBackend(app=self.app, url=self.replica_set_url)
+        self.assertEqual(backend.as_uri(), self.sanitized_replica_set_url)
+
+    @mock.stdouts
+    def test_regression_worker_startup_info(self, stdout, stderr):
+        self.app.conf.result_backend = (
+            'mongodb://user:password@host0.com:43437,host1.com:43437'
+            '/work4us?replicaSet=rs&ssl=true'
+        )
+        worker = self.app.Worker()
+        worker.on_start()
+        self.assertTrue(worker.startup_info())
+
+
+@skip.unless_module('pymongo')
+class test_MongoBackend_no_mock(AppCase):
+
+    def test_encode_decode(self):
+        backend = MongoBackend(app=self.app)
+        data = {'foo': 1}
+        self.assertTrue(backend.decode(backend.encode(data)))
+        backend.serializer = 'bson'
+        self.assertEquals(backend.encode(data), data)
+        self.assertEquals(backend.decode(data), data)
+
+    def test_de(self):
+        backend = MongoBackend(app=self.app)
+        data = {'foo': 1}
+        self.assertTrue(backend.encode(data))
+        backend.serializer = 'bson'
+        self.assertEquals(backend.encode(data), data)

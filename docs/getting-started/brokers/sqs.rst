@@ -18,7 +18,7 @@ Installation
 
 For the Amazon SQS support you have to install the `boto`_ library:
 
-.. code-block:: bash
+.. code-block:: console
 
     $ pip install -U boto
 
@@ -32,9 +32,11 @@ Configuration
 
 You have to specify SQS in the broker URL::
 
-    BROKER_URL = 'sqs://ABCDEFGHIJKLMNOPQRST:ZYXK7NiynGlTogH8Nj+P9nlE73sq3@'
+    broker_url = 'sqs://ABCDEFGHIJKLMNOPQRST:ZYXK7NiynGlTogH8Nj+P9nlE73sq3@'
 
-where the URL format is::
+where the URL format is:
+
+.. code-block:: text
 
     sqs://aws_access_key_id:aws_secret_access_key@
 
@@ -42,7 +44,7 @@ you must *remember to include the "@" at the end*.
 
 The login credentials can also be set using the environment variables
 :envvar:`AWS_ACCESS_KEY_ID` and :envvar:`AWS_SECRET_ACCESS_KEY`,
-in that case the broker url may only be ``sqs://``.
+in that case the broker URL may only be ``sqs://``.
 
 .. note::
 
@@ -57,9 +59,9 @@ Region
 ------
 
 The default region is ``us-east-1`` but you can select another region
-by configuring the :setting:`BROKER_TRANSPORT_OPTIONS` setting::
+by configuring the :setting:`broker_transport_options` setting::
 
-    BROKER_TRANSPORT_OPTIONS = {'region': 'eu-west-1'}
+    broker_transport_options = {'region': 'eu-west-1'}
 
 .. seealso::
 
@@ -74,9 +76,9 @@ The visibility timeout defines the number of seconds to wait
 for the worker to acknowledge the task before the message is redelivered
 to another worker.  Also see caveats below.
 
-This option is set via the :setting:`BROKER_TRANSPORT_OPTIONS` setting::
+This option is set via the :setting:`broker_transport_options` setting::
 
-    BROKER_TRANSPORT_OPTIONS = {'visibility_timeout': 3600}  # 1 hour.
+    broker_transport_options = {'visibility_timeout': 3600}  # 1 hour.
 
 The default visibility timeout is 30 seconds.
 
@@ -91,10 +93,10 @@ sleep for one second whenever there are no more messages to read.
 You should note that **more frequent polling is also more expensive, so increasing
 the polling interval can save you money**.
 
-The polling interval can be set via the :setting:`BROKER_TRANSPORT_OPTIONS`
+The polling interval can be set via the :setting:`broker_transport_options`
 setting::
 
-    BROKER_TRANSPORT_OPTIONS = {'polling_interval': 0.3}
+    broker_transport_options = {'polling_interval': 0.3}
 
 Very frequent polling intervals can cause *busy loops*, which results in the
 worker using a lot of CPU time.  If you need sub-millisecond precision you
@@ -106,9 +108,9 @@ Queue Prefix
 
 By default Celery will not assign any prefix to the queue names,
 If you have other services using SQS you can configure it do so
-using the :setting:`BROKER_TRANSPORT_OPTIONS` setting::
+using the :setting:`broker_transport_options` setting::
 
-    BROKER_TRANSPORT_OPTIONS = {'queue_name_prefix': 'celery-'}
+    broker_transport_options = {'queue_name_prefix': 'celery-'}
 
 
 .. _sqs-caveats:
@@ -137,7 +139,7 @@ Caveats
     The maximum visibility timeout supported by AWS as of this writing
     is 12 hours (43200 seconds)::
 
-        BROKER_TRANSPORT_OPTIONS = {'visibility_timeout': 43200}
+        broker_transport_options = {'visibility_timeout': 43200}
 
 - SQS does not yet support worker remote control commands.
 

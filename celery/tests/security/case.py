@@ -1,16 +1,8 @@
-from __future__ import absolute_import
+from __future__ import absolute_import, unicode_literals
 
-from celery.tests.case import AppCase, SkipTest
-
-import sys
+from celery.tests.case import AppCase, skip
 
 
+@skip.unless_module('OpenSSL.crypto', name='pyOpenSSL')
 class SecurityCase(AppCase):
-
-    def setup(self):
-        if sys.version_info[0] == 3:
-            raise SkipTest('PyOpenSSL does not work on Python 3')
-        try:
-            from OpenSSL import crypto  # noqa
-        except ImportError:
-            raise SkipTest('OpenSSL.crypto not installed')
+    pass

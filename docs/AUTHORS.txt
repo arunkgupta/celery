@@ -89,6 +89,7 @@ Marcin Kuźmiński <marcin@python-works.com>
 Marcin Lulek <info@webreactor.eu>
 Mark Hellewell <mark.hellewell@gmail.com>
 Mark Lavin <mlavin@caktusgroup.com>
+Mark Parncutt <me@markparncutt.com>
 Mark Stover <stovenator@gmail.com>
 Mark Thurman <mthurman@gmail.com>
 Martin Galpin <m@66laps.com>
@@ -105,6 +106,7 @@ Miguel Hernandez Martos <enlavin@gmail.com>
 Mikhail Gusarov <dottedmag@dottedmag.net>
 Mikhail Korobov <kmike84@gmail.com>
 Mitar <mitar@tnode.com>
+Môshe van der Sterre <me@moshe.nl>
 Neil Chintomby
 Noah Kantrowitz <noah@coderanger.net>
 Norman Richards <orb@nostacktrace.com>

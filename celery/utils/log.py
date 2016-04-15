@@ -6,7 +6,7 @@
     Logging utilities.
 
 """
-from __future__ import absolute_import, print_function
+from __future__ import absolute_import, print_function, unicode_literals
 
 import logging
 import numbers
@@ -59,7 +59,7 @@ def iter_open_logger_fds():
         try:
             for handler in logger.handlers:
                 try:
-                    if handler not in seen:
+                    if handler not in seen:  # pragma: no cover
                         yield handler.stream
                         seen.add(handler)
                 except AttributeError:
@@ -77,9 +77,9 @@ def in_sighandler():
         set_in_sighandler(False)
 
 
-def logger_isa(l, p):
+def logger_isa(l, p, max=1000):
     this, seen = l, set()
-    while this:
+    for _ in range(max):
         if this == p:
             return True
         else:
@@ -89,13 +89,17 @@ def logger_isa(l, p):
                 )
             seen.add(this)
             this = this.parent
+            if not this:
+                break
+    else:  # pragma: no cover
+        raise RuntimeError('Logger hierarchy exceeds {0}'.format(max))
     return False
 
 
 def get_logger(name):
     l = _get_logger(name)
     if logging.root not in (l, l.parent) and l is not base_logger:
-        if not logger_isa(l, base_logger):
+        if not logger_isa(l, base_logger):  # pragma: no cover
             l.parent = base_logger
     return l
 task_logger = get_logger('celery.task')
@@ -150,7 +154,7 @@ class ColorFormatter(logging.Formatter):
                     if isinstance(msg, string_t):
                         return text_t(color(safe_str(msg)))
                     return safe_str(color(msg))
-                except UnicodeDecodeError:
+                except UnicodeDecodeError:  # pragma: no cover
                     return safe_str(msg)  # skip colors
             except Exception as exc:
                 prev_msg, record.exc_info, record.msg = (
@@ -254,7 +258,7 @@ class LoggingProxy(object):
 def get_multiprocessing_logger():
     try:
         from billiard import util
-    except ImportError:
+    except ImportError:  # pragma: no cover
             pass
     else:
         return util.get_logger()
@@ -263,17 +267,17 @@ def get_multiprocessing_logger():
 def reset_multiprocessing_logger():
     try:
         from billiard import util
-    except ImportError:
+    except ImportError:  # pragma: no cover
         pass
     else:
-        if hasattr(util, '_logger'):
+        if hasattr(util, '_logger'):  # pragma: no cover
             util._logger = None
 
 
 def current_process():
     try:
         from billiard import process
-    except ImportError:
+    except ImportError:  # pragma: no cover
         pass
     else:
         return process.current_process()

@@ -1,73 +1,4 @@
 # -*- coding: utf-8 -*-
-"""
-
-.. _preload-options:
-
-Preload Options
----------------
-
-These options are supported by all commands,
-and usually parsed before command-specific arguments.
-
-.. cmdoption:: -A, --app
-
-    app instance to use (e.g. module.attr_name)
-
-.. cmdoption:: -b, --broker
-
-    url to broker.  default is 'amqp://guest@localhost//'
-
-.. cmdoption:: --loader
-
-    name of custom loader class to use.
-
-.. cmdoption:: --config
-
-    Name of the configuration module
-
-.. _daemon-options:
-
-Daemon Options
---------------
-
-These options are supported by commands that can detach
-into the background (daemon).  They will be present
-in any command that also has a `--detach` option.
-
-.. cmdoption:: -f, --logfile
-
-    Path to log file. If no logfile is specified, `stderr` is used.
-
-.. cmdoption:: --pidfile
-
-    Optional file used to store the process pid.
-
-    The program will not start if this file already exists
-    and the pid is still alive.
-
-.. cmdoption:: --uid
-
-    User id, or user name of the user to run as after detaching.
-
-.. cmdoption:: --gid
-
-    Group id, or group name of the main group to change to after
-    detaching.
-
-.. cmdoption:: --umask
-
-    Effective umask (in octal) of the process after detaching.  Inherits
-    the umask of the parent process by default.
-
-.. cmdoption:: --workdir
-
-    Optional directory to change to after detaching.
-
-.. cmdoption:: --executable
-
-    Executable to use for the detached process.
-
-"""
 from __future__ import absolute_import, print_function, unicode_literals
 
 import os
@@ -79,14 +10,17 @@ import json
 
 from collections import defaultdict
 from heapq import heappush
-from inspect import getargspec
-from optparse import OptionParser, IndentedHelpFormatter, make_option as Option
+from optparse import (
+    OptionParser, OptionGroup, IndentedHelpFormatter, make_option as Option,
+)
 from pprint import pformat
 
 from celery import VERSION_BANNER, Celery, maybe_patch_concurrency
 from celery import signals
 from celery.exceptions import CDeprecationWarning, CPendingDeprecationWarning
-from celery.five import items, string, string_t
+from celery.five import (
+    getfullargspec, items, python_2_unicode_compatible, string, string_t,
+)
 from celery.platforms import EX_FAILURE, EX_OK, EX_USAGE
 from celery.utils import term
 from celery.utils import text
@@ -95,8 +29,13 @@ from celery.utils.imports import symbol_by_name, import_from_cwd
 
 try:
     input = raw_input
-except NameError:
+except NameError:  # pragma: no cover
     pass
+
+__all__ = [
+    'Error', 'UsageError', 'Extensions',
+    'HelpFormatter', 'Command', 'Option', 'daemon_options',
+]
 
 # always enable DeprecationWarnings, so our users can see them.
 for warning in (CDeprecationWarning, CPendingDeprecationWarning):
@@ -110,11 +49,10 @@ Try --help?
 
 find_long_opt = re.compile(r'.+?(--.+?)(?:\s|,|$)')
 find_rst_ref = re.compile(r':\w+:`(.+?)`')
-
-__all__ = ['Error', 'UsageError', 'Extensions', 'HelpFormatter',
-           'Command', 'Option', 'daemon_options']
+find_rst_decl = re.compile(r'^\s*\.\. .+?::.+$')
 
 
+@python_2_unicode_compatible
 class Error(Exception):
     status = EX_FAILURE
 
@@ -125,7 +63,6 @@ class Error(Exception):
 
     def __str__(self):
         return self.reason
-    __unicode__ = __str__
 
 
 class UsageError(Error):
@@ -218,8 +155,8 @@ class Command(object):
     #: Enable if the application should support config from the cmdline.
     enable_config_from_cmdline = False
 
-    #: Default configuration namespace.
-    namespace = 'celery'
+    #: Default configuration name-space.
+    namespace = None
 
     #: Text to print at end of --help
     epilog = None
@@ -227,7 +164,7 @@ class Command(object):
     #: Text to print in --help before option list.
     description = ''
 
-    #: Set to true if this command doesn't have subcommands
+    #: Set to true if this command doesn't have sub-commands
     leaf = True
 
     # used by :meth:`say_remote_command_reply`.
@@ -248,7 +185,7 @@ class Command(object):
         self._no_color = no_color
         self.quiet = quiet
         if not self.description:
-            self.description = self.__doc__
+            self.description = self._strip_restructeredtext(self.__doc__)
         if on_error:
             self.on_error = on_error
         if on_usage_error:
@@ -281,7 +218,7 @@ class Command(object):
             return exc.status
 
     def verify_args(self, given, _index=0):
-        S = getargspec(self.run)
+        S = getfullargspec(self.run)
         _index = 1 if S.args and S.args[0] == 'self' else _index
         required = S.args[_index:-len(S.defaults) if S.defaults else None]
         missing = required[len(given):]
@@ -327,6 +264,9 @@ class Command(object):
     def get_options(self):
         """Get supported command-line options."""
         return self.option_list
+
+    def prepare_arguments(self, parser):
+        pass
 
     def expanduser(self, value):
         if isinstance(value, string_t):
@@ -413,20 +353,24 @@ class Command(object):
         return self.parser.parse_args(arguments)
 
     def create_parser(self, prog_name, command=None):
-        option_list = (
-            self.preload_options +
-            self.get_options() +
-            tuple(self.app.user_options['preload'])
-        )
-        return self.prepare_parser(self.Parser(
+        parser = self.Parser(
             prog=prog_name,
             usage=self.usage(command),
             version=self.version,
             epilog=self.epilog,
             formatter=HelpFormatter(),
             description=self.description,
-            option_list=option_list,
-        ))
+        )
+        parser.add_options(self.preload_options)
+        for typ_ in reversed(type(self).mro()):
+            try:
+                prepare_arguments = typ_.prepare_arguments
+            except AttributeError:
+                continue
+            prepare_arguments(self, parser)
+        parser.add_options(self.get_options() or ())
+        parser.add_options(self.app.user_options['preload'])
+        return self.prepare_parser(parser)
 
     def prepare_parser(self, parser):
         docs = [self.parse_doc(doc) for doc in (self.doc, __doc__) if doc]
@@ -505,6 +449,14 @@ class Command(object):
     def parse_preload_options(self, args):
         return self.preparse_options(args, self.preload_options)
 
+    def add_append_opt(self, acc, opt, value):
+        default = opt.default or []
+
+        if opt.dest not in acc:
+            acc[opt.dest] = default
+
+        acc[opt.dest].append(value)
+
     def preparse_options(self, args, options):
         acc = {}
         opts = {}
@@ -520,13 +472,19 @@ class Command(object):
                     key, value = arg.split('=', 1)
                     opt = opts.get(key)
                     if opt:
-                        acc[opt.dest] = value
+                        if opt.action == 'append':
+                            self.add_append_opt(acc, opt, value)
+                        else:
+                            acc[opt.dest] = value
                 else:
                     opt = opts.get(arg)
                     if opt and opt.takes_value():
                         # optparse also supports ['--opt', 'value']
                         # (Issue #1668)
-                        acc[opt.dest] = args[index + 1]
+                        if opt.action == 'append':
+                            self.add_append_opt(acc, opt, args[index + 1])
+                        else:
+                            acc[opt.dest] = args[index + 1]
                         index += 1
                     elif opt and opt.action == 'store_true':
                         acc[opt.dest] = True
@@ -555,9 +513,18 @@ class Command(object):
                     in_option = m.groups()[0].strip()
                 assert in_option, 'missing long opt'
             elif in_option and line.startswith(' ' * 4):
-                options[in_option].append(
-                    find_rst_ref.sub(r'\1', line.strip()).replace('`', ''))
+                if not find_rst_decl.match(line):
+                    options[in_option].append(
+                        find_rst_ref.sub(
+                            r'\1', line.strip()).replace('`', ''))
         return options
+
+    def _strip_restructeredtext(self, s):
+        return '\n'.join(
+            find_rst_ref.sub(r'\1', line.replace('`', ''))
+            for line in (s or '').splitlines()
+            if not find_rst_decl.match(line)
+        )
 
     def with_pool_option(self, argv):
         """Return tuple of ``(short_opts, long_opts)`` if the command
@@ -648,12 +615,12 @@ class Command(object):
             self._colored.enabled = not self._no_color
 
 
-def daemon_options(default_pidfile=None, default_logfile=None):
-    return (
-        Option('-f', '--logfile', default=default_logfile),
-        Option('--pidfile', default=default_pidfile),
-        Option('--uid', default=None),
-        Option('--gid', default=None),
-        Option('--umask', default=None),
-        Option('--executable', default=None),
-    )
+def daemon_options(parser, default_pidfile=None, default_logfile=None):
+    group = OptionGroup(parser, 'Daemonization Options')
+    group.add_option('-f', '--logfile', default=default_logfile),
+    group.add_option('--pidfile', default=default_pidfile),
+    group.add_option('--uid', default=None),
+    group.add_option('--gid', default=None),
+    group.add_option('--umask', default=None),
+    group.add_option('--executable', default=None),
+    parser.add_option_group(group)

@@ -18,13 +18,19 @@ If you need to call into another language, framework or similar, you can
 do so by using HTTP callback tasks.
 
 The HTTP callback tasks uses GET/POST data to pass arguments and returns
-result as a JSON response. The scheme to call a task is::
+result as a JSON response. The scheme to call a task is:
 
-    GET http://example.com/mytask/?arg1=a&arg2=b&arg3=c
+.. code-block:: http
 
-or using POST::
+    GET /mytask/?arg1=a&arg2=b&arg3=c HTTP/1.1
+    Host: example.com
 
-    POST http://example.com/mytask
+or using POST:
+
+.. code-block:: http
+
+    POST /mytask HTTP/1.1
+    Host: example.com
 
 .. note::
 
@@ -33,20 +39,24 @@ or using POST::
 Whether to use GET or POST is up to you and your requirements.
 
 The web page should then return a response in the following format
-if the execution was successful::
+if the execution was successful:
 
-    {'status': 'success', 'retval': …}
+.. code-block:: json
 
-or if there was an error::
+    {"status": "success", "retval": "RETVAL"}
 
-    {'status': 'failure', 'reason': 'Invalid moon alignment.'}
+or if there was an error:
+
+.. code-block:: json
+
+    {"status": "failure", "reason": "Invalid moon alignment."}
 
 Enabling the HTTP task
 ----------------------
 
 To enable the HTTP dispatch task you have to add :mod:`celery.task.http`
-to :setting:`CELERY_IMPORTS`, or start the worker with ``-I
-celery.task.http``.
+to :setting:`imports`, or start the worker with
+:option:`-I celery.task.http <celery worker -I>`.
 
 
 .. _webhook-django-example:
@@ -97,13 +107,17 @@ Calling webhook tasks
 
 To call a task you can use the :class:`~celery.task.http.URL` class:
 
+.. code-block:: pycon
+
     >>> from celery.task.http import URL
     >>> res = URL('http://example.com/multiply').get_async(x=10, y=10)
 
 
 :class:`~celery.task.http.URL` is a shortcut to the :class:`HttpDispatchTask`.
 You can subclass this to extend the
-functionality.
+functionality:
+
+.. code-block:: pycon
 
     >>> from celery.task.http import HttpDispatchTask
     >>> res = HttpDispatchTask.delay(
@@ -113,7 +127,9 @@ functionality.
     100
 
 The output of :program:`celery worker` (or the log file if enabled) should show the
-task being executed::
+task being executed:
+
+.. code-block:: text
 
     [INFO/MainProcess] Task celery.task.http.HttpDispatchTask
             [f2cc8efc-2a14-40cd-85ad-f1c77c94beeb] processed: 100
@@ -122,4 +138,4 @@ Since calling tasks can be done via HTTP using the
 :func:`djcelery.views.apply` view, calling tasks from other languages is easy.
 For an example service exposing tasks via HTTP you should have a look at
 `examples/celery_http_gateway` in the Celery distribution:
-http://github.com/celery/celery/tree/master/examples/celery_http_gateway/
+https://github.com/celery/celery/tree/master/examples/celery_http_gateway/

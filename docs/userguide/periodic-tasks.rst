@@ -13,7 +13,7 @@ Introduction
 :program:`celery beat` is a scheduler.  It kicks off tasks at regular intervals,
 which are then executed by the worker nodes available in the cluster.
 
-By default the entries are taken from the :setting:`CELERYBEAT_SCHEDULE` setting,
+By default the entries are taken from the :setting:`beat_schedule` setting,
 but custom stores can also be used, like storing the entries
 in an SQL database.
 
@@ -28,22 +28,20 @@ Time Zones
 ==========
 
 The periodic task schedules uses the UTC time zone by default,
-but you can change the time zone used using the :setting:`CELERY_TIMEZONE`
+but you can change the time zone used using the :setting:`timezone`
 setting.
 
 An example time zone could be `Europe/London`:
 
 .. code-block:: python
 
-    CELERY_TIMEZONE = 'Europe/London'
-
+    timezone = 'Europe/London'
 
 This setting must be added to your app, either by configuration it directly
-using (``app.conf.CELERY_TIMEZONE = 'Europe/London'``), or by adding
+using (``app.conf.timezone = 'Europe/London'``), or by adding
 it to your configuration module if you have set one up using
 ``app.config_from_object``.  See :ref:`celerytut-configuration` for
 more information about configuration options.
-
 
 The default scheduler (storing the schedule in the :file:`celerybeat-schedule`
 file) will automatically detect that the time zone has changed, and so will
@@ -58,12 +56,12 @@ schedule manually.
 
     For Django users the time zone specified in the ``TIME_ZONE`` setting
     will be used, or you can specify a custom time zone for Celery alone
-    by using the :setting:`CELERY_TIMEZONE` setting.
+    by using the :setting:`timezone` setting.
 
     The database scheduler will not reset when timezone related settings
     change, so you must do this manually:
 
-    .. code-block:: bash
+    .. code-block:: console
 
         $ python manage.py shell
         >>> from djcelery.models import PeriodicTask
@@ -103,26 +101,25 @@ beat schedule list.
         print(arg)
 
 
-Setting these up from within the ``on_after_configure`` handler means
+Setting these up from within the :data:`~@on_after_configure` handler means
 that we will not evaluate the app at module level when using ``test.s()``.
 
-The `@add_periodic_task` function will add the entry to the
-:setting:`CELERYBEAT_SCHEDULE` setting behind the scenes, which also
+The :meth:`~@add_periodic_task` function will add the entry to the
+:setting:`beat_schedule` setting behind the scenes, which also
 can be used to set up periodic tasks manually:
 
 Example: Run the `tasks.add` task every 30 seconds.
 
 .. code-block:: python
 
-    CELERYBEAT_SCHEDULE = {
+    app.conf.beat_schedule = {
         'add-every-30-seconds': {
             'task': 'tasks.add',
             'schedule': 30.0,
             'args': (16, 16)
         },
     }
-
-    CELERY_TIMEZONE = 'UTC'
+    app.conf.timezone = 'UTC'
 
 
 .. note::
@@ -132,14 +129,17 @@ Example: Run the `tasks.add` task every 30 seconds.
     set these options on your app directly or you can keep
     a separate module for configuration.
 
+    If you want to use a single item tuple for `args`, don't forget
+    that the constructor is a comma and not a pair of parentheses.
+
 Using a :class:`~datetime.timedelta` for the schedule means the task will
 be sent in 30 second intervals (the first task will be sent 30 seconds
 after `celery beat` starts, and then every 30 seconds
 after the last run).
 
-A crontab like schedule also exists, see the section on `Crontab schedules`_.
+A Crontab like schedule also exists, see the section on `Crontab schedules`_.
 
-Like with ``cron``, the tasks may overlap if the first task does not complete
+Like with :command:`cron`, the tasks may overlap if the first task does not complete
 before the next.  If that is a concern you should use a locking
 strategy to ensure only one instance can run at a time (see for example
 :ref:`cookbook-task-serial`).
@@ -182,7 +182,8 @@ Available Fields
 
     By default :class:`~datetime.timedelta` schedules are scheduled
     "by the clock". This means the frequency is rounded to the nearest
-    second, minute, hour or day depending on the period of the timedelta.
+    second, minute, hour or day depending on the period of the
+    :class:`~datetime.timedelta`.
 
     If `relative` is true the frequency is not rounded and will be
     relative to the time when :program:`celery beat` was started.
@@ -200,7 +201,7 @@ the :class:`~celery.schedules.crontab` schedule type:
 
     from celery.schedules import crontab
 
-    CELERYBEAT_SCHEDULE = {
+    app.conf.beat_schedule = {
         # Executes every Monday morning at 7:30 A.M
         'add-every-monday-morning': {
             'task': 'tasks.add',
@@ -209,7 +210,7 @@ the :class:`~celery.schedules.crontab` schedule type:
         },
     }
 
-The syntax of these crontab expressions are very flexible.  Some examples:
+The syntax of these Crontab expressions are very flexible.  Some examples:
 
 +-----------------------------------------+--------------------------------------------+
 | **Example**                             | **Meaning**                                |
@@ -260,7 +261,7 @@ The syntax of these crontab expressions are very flexible.  Some examples:
 | ``crontab(0, 0,``                       | Execute on the first and third weeks of    |
 |         ``day_of_month='1-7,15-21')``   | the month.                                 |
 +-----------------------------------------+--------------------------------------------+
-| ``crontab(0, 0, day_of_month='11',``    | Execute on 11th of May every year.         |
+| ``crontab(0, 0, day_of_month='11',``    | Execute on the eleventh of May every year. |
 |          ``month_of_year='5')``         |                                            |
 +-----------------------------------------+--------------------------------------------+
 | ``crontab(0, 0,``                       | Execute on the first month of every        |
@@ -269,6 +270,108 @@ The syntax of these crontab expressions are very flexible.  Some examples:
 
 See :class:`celery.schedules.crontab` for more documentation.
 
+.. _beat-solar:
+
+Solar schedules
+=================
+
+If you have a task that should be executed according to sunrise,
+sunset, dawn or dusk, you can use the
+:class:`~celery.schedules.solar` schedule type:
+
+.. code-block:: python
+
+    from celery.schedules import solar
+
+    app.conf.beat_schedule = {
+        # Executes at sunset in Melbourne
+        'add-at-melbourne-sunset': {
+            'task': 'tasks.add',
+            'schedule': solar('sunset', -37.81753, 144.96715),
+            'args': (16, 16),
+        },
+    }
+
+The arguments are simply: ``solar(event, latitude, longitude)``
+
+Be sure to use the correct sign for latitude and longitude:
+
++---------------+-------------------+----------------------+
+| **Sign**      | **Argument**      | **Meaning**          |
++---------------+-------------------+----------------------+
+| ``+``         | ``latitude``      | North                |
++---------------+-------------------+----------------------+
+| ``-``         | ``latitude``      | South                |
++---------------+-------------------+----------------------+
+| ``+``         | ``longitude``     | East                 |
++---------------+-------------------+----------------------+
+| ``-``         | ``longitude``     | West                 |
++---------------+-------------------+----------------------+
+
+Possible event types are:
+
++-----------------------------------------+--------------------------------------------+
+| **Event**                               | **Meaning**                                |
++-----------------------------------------+--------------------------------------------+
+| ``dawn_astronomical``                   | Execute at the moment after which the sky  |
+|                                         | is no longer completely dark. This is when |
+|                                         | the sun is 18 degrees below the horizon.   |
++-----------------------------------------+--------------------------------------------+
+| ``dawn_nautical``                       | Execute when there is enough sunlight for  |
+|                                         | the horizon and some objects to be         |
+|                                         | distinguishable; formally, when the sun is |
+|                                         | 12 degrees below the horizon.              |
++-----------------------------------------+--------------------------------------------+
+| ``dawn_civil``                          | Execute when there is enough light for     |
+|                                         | objects to be distinguishable so that      |
+|                                         | outdoor activities can commence;           |
+|                                         | formally, when the Sun is 6 degrees below  |
+|                                         | the horizon.                               |
++-----------------------------------------+--------------------------------------------+
+| ``sunrise``                             | Execute when the upper edge of the sun     |
+|                                         | appears over the eastern horizon in the    |
+|                                         | morning.                                   |
++-----------------------------------------+--------------------------------------------+
+| ``solar_noon``                          | Execute when the sun is highest above the  |
+|                                         | horizon on that day.                       |
++-----------------------------------------+--------------------------------------------+
+| ``sunset``                              | Execute when the trailing edge of the sun  |
+|                                         | disappears over the western horizon in the |
+|                                         | evening.                                   |
++-----------------------------------------+--------------------------------------------+
+| ``dusk_civil``                          | Execute at the end of civil twilight, when |
+|                                         | objects are still distinguishable and some |
+|                                         | stars and planets are visible. Formally,   |
+|                                         | when the sun is 6 degrees below the        |
+|                                         | horizon.                                   |
++-----------------------------------------+--------------------------------------------+
+| ``dusk_nautical``                       | Execute when the sun is 12 degrees below   |
+|                                         | the horizon. Objects are no longer         |
+|                                         | distinguishable, and the horizon is no     |
+|                                         | longer visible to the naked eye.           |
++-----------------------------------------+--------------------------------------------+
+| ``dusk_astronomical``                   | Execute at the moment after which the sky  |
+|                                         | becomes completely dark; formally, when    |
+|                                         | the sun is 18 degrees below the horizon.   |
++-----------------------------------------+--------------------------------------------+
+
+All solar events are calculated using UTC, and are therefore
+unaffected by your timezone setting.
+
+In polar regions, the sun may not rise or set every day. The scheduler
+is able to handle these cases, i.e. a ``sunrise`` event won't run on a day
+when the sun doesn't rise. The one exception is ``solar_noon``, which is
+formally defined as the moment the sun transits the celestial meridian,
+and will occur every day even if the sun is below the horizon.
+
+Twilight is defined as the period between dawn and sunrise, and between
+sunset and dusk. You can schedule an event according to "twilight"
+depending on your definition of twilight (civil, nautical or astronomical),
+and whether you want the event to take place at the beginning or end
+of twilight, using the appropriate event from the list above.
+
+See :class:`celery.schedules.solar` for more documentation.
+
 .. _beat-starting:
 
 Starting the Scheduler
@@ -276,16 +379,16 @@ Starting the Scheduler
 
 To start the :program:`celery beat` service:
 
-.. code-block:: bash
+.. code-block:: console
 
     $ celery -A proj beat
 
 You can also start embed `beat` inside the worker by enabling
-workers `-B` option, this is convenient if you will never run
-more than one worker node, but it's not commonly used and for that
+workers :option:`-B <celery worker -B>` option, this is convenient if you'll
+never run more than one worker node, but it's not commonly used and for that
 reason is not recommended for production use:
 
-.. code-block:: bash
+.. code-block:: console
 
     $ celery -A proj worker -B
 
@@ -294,7 +397,7 @@ file (named `celerybeat-schedule` by default), so it needs access to
 write in the current directory, or alternatively you can specify a custom
 location for this file:
 
-.. code-block:: bash
+.. code-block:: console
 
     $ celery -A proj beat -s /home/celery/var/run/celerybeat-schedule
 
@@ -308,17 +411,19 @@ location for this file:
 Using custom scheduler classes
 ------------------------------
 
-Custom scheduler classes can be specified on the command-line (the `-S`
-argument).  The default scheduler is :class:`celery.beat.PersistentScheduler`,
+Custom scheduler classes can be specified on the command-line (the
+:option:`-S <celery beat -S>` argument).
+
+The default scheduler is :class:`celery.beat.PersistentScheduler`,
 which is simply keeping track of the last run times in a local database file
 (a :mod:`shelve`).
 
-`django-celery` also ships with a scheduler that stores the schedule in the
-Django database:
+:pypi:`django-celery` also ships with a scheduler that stores the schedule in
+the Django database:
 
-.. code-block:: bash
+.. code-block:: console
 
     $ celery -A proj beat -S djcelery.schedulers.DatabaseScheduler
 
-Using `django-celery`'s scheduler you can add, modify and remove periodic
+Using :pypi:`django-celery`'s scheduler you can add, modify and remove periodic
 tasks from the Django Admin.

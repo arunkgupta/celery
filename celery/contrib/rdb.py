@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-celery.contrib.rdb
-==================
+``celery.contrib.rdb``
+======================
 
 Remote debugger for Celery tasks running in multiprocessing pool workers.
 Inspired by http://snippets.dzone.com/posts/show/7248
@@ -24,10 +24,16 @@ Inspired by http://snippets.dzone.com/posts/show/7248
 
 .. envvar:: CELERY_RDB_HOST
 
+``CELERY_RDB_HOST``
+-------------------
+
     Hostname to bind to.  Default is '127.0.01', which means the socket
     will only be accessible from the local host.
 
 .. envvar:: CELERY_RDB_PORT
+
+``CELERY_RDB_PORT``
+-------------------
 
     Base port to bind to.  Default is 6899.
     The debugger will try to find an available port starting from the
@@ -132,13 +138,23 @@ class Rdb(Pdb):
     def say(self, m):
         print(m, file=self.out)
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc_info):
+        self._close_session()
+
     def _close_session(self):
         self.stdin, self.stdout = sys.stdin, sys.stdout = self._prev_handles
-        self._handle.close()
-        self._client.close()
-        self._sock.close()
-        self.active = False
-        self.say(SESSION_ENDED.format(self=self))
+        if self.active:
+            if self._handle is not None:
+                self._handle.close()
+            if self._client is not None:
+                self._client.close()
+            if self._sock is not None:
+                self._sock.close()
+            self.active = False
+            self.say(SESSION_ENDED.format(self=self))
 
     def do_continue(self, arg):
         self._close_session()
@@ -167,7 +183,7 @@ def debugger():
 
 
 def set_trace(frame=None):
-    """Set breakpoint at current location, or a specified frame"""
+    """Set break-point at current location, or a specified frame."""
     if frame is None:
         frame = _frame().f_back
     return debugger().set_trace(frame)

@@ -6,7 +6,7 @@
     gevent pool implementation.
 
 """
-from __future__ import absolute_import
+from __future__ import absolute_import, unicode_literals
 
 from time import time
 
@@ -30,7 +30,7 @@ def apply_timeout(target, args=(), kwargs={}, callback=None,
         with Timeout(timeout):
             return apply_target(target, args, kwargs, callback,
                                 accept_callback, pid,
-                                propagate=(Timeout, ), **rest)
+                                propagate=(Timeout,), **rest)
     except Timeout:
         return timeout_callback(False, timeout)
 
@@ -56,7 +56,7 @@ class Timer(_timer.Timer):
         g.entry = entry
         g.eta = eta
         g.priority = priority
-        g.cancelled = False
+        g.canceled = False
         return g
 
     def _entry_exit(self, g):

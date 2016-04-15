@@ -6,11 +6,13 @@
     SQLAlchemy result store backend.
 
 """
-from __future__ import absolute_import
+from __future__ import absolute_import, unicode_literals
 
 import logging
+
 from contextlib import contextmanager
-from functools import wraps
+
+from vine.utils import wraps
 
 from celery import states
 from celery.backends.base import BaseBackend
@@ -22,23 +24,17 @@ from .models import Task
 from .models import TaskSet
 from .session import SessionManager
 
+try:
+    from sqlalchemy.exc import DatabaseError, InvalidRequestError
+    from sqlalchemy.orm.exc import StaleDataError
+except ImportError:  # pragma: no cover
+    raise ImproperlyConfigured(
+        'The database result backend requires SQLAlchemy to be installed.'
+        'See http://pypi.python.org/pypi/SQLAlchemy')
+
 logger = logging.getLogger(__name__)
 
 __all__ = ['DatabaseBackend']
-
-
-def _sqlalchemy_installed():
-    try:
-        import sqlalchemy
-    except ImportError:
-        raise ImproperlyConfigured(
-            'The database result backend requires SQLAlchemy to be installed.'
-            'See http://pypi.python.org/pypi/SQLAlchemy')
-    return sqlalchemy
-_sqlalchemy_installed()
-
-from sqlalchemy.exc import DatabaseError, InvalidRequestError
-from sqlalchemy.orm.exc import StaleDataError
 
 
 @contextmanager
@@ -63,7 +59,7 @@ def retry(fun):
                 return fun(*args, **kwargs)
             except (DatabaseError, InvalidRequestError, StaleDataError):
                 logger.warning(
-                    "Failed operation %s. Retrying %s more times.",
+                    'Failed operation %s. Retrying %s more times.',
                     fun.__name__, max_retries - retries - 1,
                     exc_info=True,
                 )
@@ -83,38 +79,40 @@ class DatabaseBackend(BaseBackend):
         # The `url` argument was added later and is used by
         # the app to set backend by url (celery.backends.get_backend_by_url)
         super(DatabaseBackend, self).__init__(
-            expires_type=maybe_timedelta, **kwargs
+            expires_type=maybe_timedelta,
+            url=url,
+            **kwargs
         )
         conf = self.app.conf
-        self.dburi = url or dburi or conf.CELERY_RESULT_DBURI
+        self.url = url or dburi or conf.sqlalchemy_dburi
         self.engine_options = dict(
             engine_options or {},
-            **conf.CELERY_RESULT_ENGINE_OPTIONS or {})
+            **conf.sqlalchemy_engine_options or {})
         self.short_lived_sessions = kwargs.get(
             'short_lived_sessions',
-            conf.CELERY_RESULT_DB_SHORT_LIVED_SESSIONS,
+            conf.sqlalchemy_short_lived_sessions,
         )
 
-        tablenames = conf.CELERY_RESULT_DB_TABLENAMES or {}
+        tablenames = conf.sqlalchemy_table_names or {}
         Task.__table__.name = tablenames.get('task', 'celery_taskmeta')
         TaskSet.__table__.name = tablenames.get('group', 'celery_tasksetmeta')
 
-        if not self.dburi:
+        if not self.url:
             raise ImproperlyConfigured(
-                'Missing connection string! Do you have '
-                'CELERY_RESULT_DBURI set to a real value?')
+                'Missing connection string! Do you have the'
+                ' sqlalchemy_dburi setting set to a real value?')
 
     def ResultSession(self, session_manager=SessionManager()):
         return session_manager.session_factory(
-            dburi=self.dburi,
+            dburi=self.url,
             short_lived_sessions=self.short_lived_sessions,
             **self.engine_options
         )
 
     @retry
-    def _store_result(self, task_id, result, status,
+    def _store_result(self, task_id, result, state,
                       traceback=None, max_retries=3, **kwargs):
-        """Store return value and status of an executed task."""
+        """Store return value and state of an executed task."""
         session = self.ResultSession()
         with session_cleanup(session):
             task = list(session.query(Task).filter(Task.task_id == task_id))
@@ -124,14 +122,14 @@ class DatabaseBackend(BaseBackend):
                 session.add(task)
                 session.flush()
             task.result = result
-            task.status = status
+            task.status = state
             task.traceback = traceback
             session.commit()
             return result
 
     @retry
     def _get_task_meta_for(self, task_id):
-        """Get task metadata for a task by id."""
+        """Get task meta-data for a task by id."""
         session = self.ResultSession()
         with session_cleanup(session):
             task = list(session.query(Task).filter(Task.task_id == task_id))
@@ -140,7 +138,7 @@ class DatabaseBackend(BaseBackend):
                 task = Task(task_id)
                 task.status = states.PENDING
                 task.result = None
-            return task.to_dict()
+            return self.meta_from_decoded(task.to_dict())
 
     @retry
     def _save_group(self, group_id, result):
@@ -155,7 +153,7 @@ class DatabaseBackend(BaseBackend):
 
     @retry
     def _restore_group(self, group_id):
-        """Get metadata for group by id."""
+        """Get meta-data for group by id."""
         session = self.ResultSession()
         with session_cleanup(session):
             group = session.query(TaskSet).filter(
@@ -165,7 +163,7 @@ class DatabaseBackend(BaseBackend):
 
     @retry
     def _delete_group(self, group_id):
-        """Delete metadata for group by id."""
+        """Delete meta-data for group by id."""
         session = self.ResultSession()
         with session_cleanup(session):
             session.query(TaskSet).filter(
@@ -182,7 +180,7 @@ class DatabaseBackend(BaseBackend):
             session.commit()
 
     def cleanup(self):
-        """Delete expired metadata."""
+        """Delete expired meta-data."""
         session = self.ResultSession()
         expires = self.expires
         now = self.app.now()
@@ -195,7 +193,7 @@ class DatabaseBackend(BaseBackend):
 
     def __reduce__(self, args=(), kwargs={}):
         kwargs.update(
-            dict(dburi=self.dburi,
+            dict(dburi=self.url,
                  expires=self.expires,
                  engine_options=self.engine_options))
         return super(DatabaseBackend, self).__reduce__(args, kwargs)

@@ -30,8 +30,8 @@ UNITS = (
     (2 ** 40.0, 'TB'),
     (2 ** 30.0, 'GB'),
     (2 ** 20.0, 'MB'),
-    (2 ** 10.0, 'kB'),
-    (0.0, '{0!d}b'),
+    (2 ** 10.0, 'KB'),
+    (0.0, 'b'),
 )
 
 _process = None
@@ -78,7 +78,7 @@ def sample_mem():
     return current_rss
 
 
-def _memdump(samples=10):
+def _memdump(samples=10):  # pragma: no cover
     S = _mem_sample
     prev = list(S) if len(S) <= samples else sample(S, samples)
     _mem_sample[:] = []
@@ -88,7 +88,7 @@ def _memdump(samples=10):
     return prev, after_collect
 
 
-def memdump(samples=10, file=None):
+def memdump(samples=10, file=None):  # pragma: no cover
     """Dump memory statistics.
 
     Will print a sample of all RSS memory samples added by
@@ -111,7 +111,7 @@ def memdump(samples=10, file=None):
 def sample(x, n, k=0):
     """Given a list `x` a sample of length ``n`` of that list is returned.
 
-    E.g. if `n` is 10, and `x` has 100 items, a list of every 10th
+    E.g. if `n` is 10, and `x` has 100 items, a list of every tenth.
     item is returned.
 
     ``k`` can be used as offset.
@@ -137,7 +137,7 @@ def hfloat(f, p=5):
 
 
 def humanbytes(s):
-    """Convert bytes to human-readable form (e.g. kB, MB)."""
+    """Convert bytes to human-readable form (e.g. KB, MB)."""
     return next(
         '{0}{1}'.format(hfloat(s / div if div else s), unit)
         for div, unit in UNITS if s >= div
@@ -151,9 +151,9 @@ def mem_rss():
         return humanbytes(p.get_memory_info().rss)
 
 
-def ps():
+def ps():  # pragma: no cover
     """Return the global :class:`psutil.Process` instance,
-    or :const:`None` if :mod:`psutil` is not installed."""
+    or :const:`None` if :pypi:`psutil` is not installed."""
     global _process
     if _process is None and Process is not None:
         _process = Process(os.getpid())

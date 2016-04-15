@@ -1,14 +1,23 @@
 # -*- coding: utf-8 -*-
 """
-    celery.backends.mongodb
-    ~~~~~~~~~~~~~~~~~~~~~~~
+    ``celery.backends.mongodb``
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
     MongoDB result store backend.
 
 """
-from __future__ import absolute_import
+from __future__ import absolute_import, unicode_literals
 
 from datetime import datetime, timedelta
+
+from kombu.utils import cached_property
+from kombu.utils.url import maybe_sanitize_url
+from kombu.exceptions import EncodeError
+from celery import states
+from celery.exceptions import ImproperlyConfigured
+from celery.five import string_t, items
+
+from .base import BaseBackend
 
 try:
     import pymongo
@@ -23,28 +32,22 @@ if pymongo:
     from pymongo.errors import InvalidDocument  # noqa
 else:                                       # pragma: no cover
     Binary = None                           # noqa
-    InvalidDocument = None                  # noqa
 
-from kombu.syn import detect_environment
-from kombu.utils import cached_property
-from kombu.exceptions import EncodeError
-from celery import states
-from celery.exceptions import ImproperlyConfigured
-from celery.five import string_t
-
-from .base import BaseBackend
+    class InvalidDocument(Exception):       # noqa
+        pass
 
 __all__ = ['MongoBackend']
 
 
-class Bunch(object):
-
-    def __init__(self, **kw):
-        self.__dict__.update(kw)
-
-
 class MongoBackend(BaseBackend):
+    """MongoDB result backend.
 
+    :raises celery.exceptions.ImproperlyConfigured: if
+        module :pypi:`pymongo` is not available.
+
+    """
+
+    mongo_host = None
     host = 'localhost'
     port = 27017
     user = None
@@ -59,13 +62,7 @@ class MongoBackend(BaseBackend):
 
     _connection = None
 
-    def __init__(self, app=None, url=None, **kwargs):
-        """Initialize MongoDB backend instance.
-
-        :raises celery.exceptions.ImproperlyConfigured: if
-            module :mod:`pymongo` is not available.
-
-        """
+    def __init__(self, app=None, **kwargs):
         self.options = {}
 
         super(MongoBackend, self).__init__(app, **kwargs)
@@ -75,15 +72,44 @@ class MongoBackend(BaseBackend):
                 'You need to install the pymongo library to use the '
                 'MongoDB backend.')
 
-        config = self.app.conf.get('CELERY_MONGODB_BACKEND_SETTINGS')
+        # Set option defaults
+        for key, value in items(self._prepare_client_options()):
+            self.options.setdefault(key, value)
+
+        # update conf with mongo uri data, only if uri was given
+        if self.url:
+            if self.url == 'mongodb://':
+                self.url += 'localhost'
+
+            uri_data = pymongo.uri_parser.parse_uri(self.url)
+            # build the hosts list to create a mongo connection
+            hostslist = [
+                '{0}:{1}'.format(x[0], x[1]) for x in uri_data['nodelist']
+            ]
+            self.user = uri_data['username']
+            self.password = uri_data['password']
+            self.mongo_host = hostslist
+            if uri_data['database']:
+                # if no database is provided in the uri, use default
+                self.database_name = uri_data['database']
+
+            self.options.update(uri_data['options'])
+
+        # update conf with specific settings
+        config = self.app.conf.get('mongodb_backend_settings')
         if config is not None:
             if not isinstance(config, dict):
                 raise ImproperlyConfigured(
                     'MongoDB backend settings should be grouped in a dict')
             config = dict(config)  # do not modify original
 
+            if 'host' in config or 'port' in config:
+                # these should take over uri conf
+                self.mongo_host = None
+
             self.host = config.pop('host', self.host)
-            self.port = int(config.pop('port', self.port))
+            self.port = config.pop('port', self.port)
+            self.mongo_host = config.pop('mongo_host', self.mongo_host)
             self.user = config.pop('user', self.user)
             self.password = config.pop('password', self.password)
             self.database_name = config.pop('database', self.database_name)
@@ -94,47 +120,40 @@ class MongoBackend(BaseBackend):
                 'groupmeta_collection', self.groupmeta_collection,
             )
 
-            self.options = dict(config, **config.pop('options', None) or {})
+            self.options.update(config.pop('options', {}))
+            self.options.update(config)
 
-            # Set option defaults
-            self.options.setdefault('max_pool_size', self.max_pool_size)
-            self.options.setdefault('auto_start_request', False)
-
-        self.url = url
-        if self.url:
-            # Specifying backend as an URL
-            self.host = self.url
+    def _prepare_client_options(self):
+            if pymongo.version_tuple >= (3,):
+                return {'maxPoolSize': self.max_pool_size}
+            else:  # pragma: no cover
+                return {'max_pool_size': self.max_pool_size,
+                        'auto_start_request': False}
 
     def _get_connection(self):
         """Connect to the MongoDB server."""
         if self._connection is None:
             from pymongo import MongoClient
 
-            # The first pymongo.Connection() argument (host) can be
-            # a list of ['host:port'] elements or a mongodb connection
-            # URI. If this is the case, don't use self.port
-            # but let pymongo get the port(s) from the URI instead.
-            # This enables the use of replica sets and sharding.
-            # See pymongo.Connection() for more info.
-            url = self.host
-            if isinstance(url, string_t) \
-                    and not url.startswith('mongodb://'):
-                url = 'mongodb://{0}:{1}'.format(url, self.port)
-            if url == 'mongodb://':
-                url = url + 'localhost'
-            if detect_environment() != 'default':
-                self.options['use_greenlets'] = True
-            self._connection = MongoClient(host=url, **self.options)
+            host = self.mongo_host
+            if not host:
+                # The first pymongo.Connection() argument (host) can be
+                # a list of ['host:port'] elements or a mongodb connection
+                # URI. If this is the case, don't use self.port
+                # but let pymongo get the port(s) from the URI instead.
+                # This enables the use of replica sets and sharding.
+                # See pymongo.Connection() for more info.
+                host = self.host
+                if isinstance(host, string_t) \
+                   and not host.startswith('mongodb://'):
+                    host = 'mongodb://{0}:{1}'.format(host, self.port)
+            # don't change self.options
+            conf = dict(self.options)
+            conf['host'] = host
+
+            self._connection = MongoClient(**conf)
 
         return self._connection
-
-    def process_cleanup(self):
-        if self._connection is not None:
-            # MongoDB connection will be closed automatically when object
-            # goes out of scope
-            del(self.collection)
-            del(self.database)
-            self._connection = None
 
     def encode(self, data):
         if self.serializer == 'bson':
@@ -147,12 +166,12 @@ class MongoBackend(BaseBackend):
             return data
         return super(MongoBackend, self).decode(data)
 
-    def _store_result(self, task_id, result, status,
+    def _store_result(self, task_id, result, state,
                       traceback=None, request=None, **kwargs):
-        """Store return value and status of an executed task."""
+        """Store return value and state of an executed task."""
 
         meta = {'_id': task_id,
-                'status': status,
+                'status': state,
                 'result': self.encode(result),
                 'date_done': datetime.utcnow(),
                 'traceback': self.encode(traceback),
@@ -168,7 +187,7 @@ class MongoBackend(BaseBackend):
         return result
 
     def _get_task_meta_for(self, task_id):
-        """Get task metadata for a task by id."""
+        """Get task meta-data for a task by id."""
         obj = self.collection.find_one({'_id': task_id})
         if obj:
             return self.meta_from_decoded({
@@ -211,11 +230,11 @@ class MongoBackend(BaseBackend):
         self.group_collection.remove({'_id': group_id})
 
     def _forget(self, task_id):
-        """
-        Remove result from MongoDB.
+        """Remove result from MongoDB.
 
-        :raises celery.exceptions.OperationsError: if the task_id could not be
-                                                   removed.
+        :raises celery.exceptions.OperationsError:
+            if the task_id could not be removed.
+
         """
         # By using safe=True, this will wait until it receives a response from
         # the server.  Likewise, it will raise an OperationsError if the
@@ -223,7 +242,7 @@ class MongoBackend(BaseBackend):
         self.collection.remove({'_id': task_id})
 
     def cleanup(self):
-        """Delete expired metadata."""
+        """Delete expired meta-data."""
         self.collection.remove(
             {'date_done': {'$lt': self.app.now() - self.expires_delta}},
         )
@@ -254,7 +273,7 @@ class MongoBackend(BaseBackend):
 
     @cached_property
     def collection(self):
-        """Get the metadata task collection."""
+        """Get the meta-data task collection."""
         collection = self.database[self.taskmeta_collection]
 
         # Ensure an index on date_done is there, if not process the index
@@ -264,7 +283,7 @@ class MongoBackend(BaseBackend):
 
     @cached_property
     def group_collection(self):
-        """Get the metadata task collection."""
+        """Get the meta-data task collection."""
         collection = self.database[self.groupmeta_collection]
 
         # Ensure an index on date_done is there, if not process the index
@@ -275,3 +294,20 @@ class MongoBackend(BaseBackend):
     @cached_property
     def expires_delta(self):
         return timedelta(seconds=self.expires)
+
+    def as_uri(self, include_password=False):
+        """Return the backend as an URI.
+
+        :keyword include_password: Censor passwords.
+
+        """
+        if not self.url:
+            return 'mongodb://'
+        if include_password:
+            return self.url
+
+        if ',' not in self.url:
+            return maybe_sanitize_url(self.url)
+
+        uri1, remainder = self.url.split(',', 1)
+        return ','.join([maybe_sanitize_url(uri1), remainder])
